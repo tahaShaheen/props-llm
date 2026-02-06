@@ -5,8 +5,8 @@ from runner import (
 )
 from runner import llm_num_optim_runner
 from runner import llm_num_optim_semantics_runner
-import gym_maze
-import gym_navigation
+# import gym_maze
+# import gym_navigation
 from envs import nim, pong
 
 

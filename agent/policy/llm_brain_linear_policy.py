@@ -4,10 +4,11 @@ import numpy as np
 import os
 import time
 from jinja2 import Template
-from openai import OpenAI
-import google.generativeai as genai
-import anthropic
-import time
+# from openai import OpenAI
+# import google.generativeai as genai
+# import anthropic
+import ollama
+import requests
 
 
 class LLMBrain:
@@ -16,11 +17,13 @@ class LLMBrain:
         llm_si_template: Template,
         llm_output_conversion_template: Template,
         llm_model_name: str,
+        ollama_num_ctx: int = 4096,
     ):
         self.llm_si_template = llm_si_template
         self.llm_output_conversion_template = llm_output_conversion_template
         self.llm_conversation = []
-        assert llm_model_name in [
+        # Support both cloud models and local Ollama models
+        CLOUD_MODELS = [
             "o1-preview",
             "gpt-4o",
             "gemini-2.0-flash-exp",
@@ -35,13 +38,21 @@ class LLMBrain:
             "gpt-4o-2024-08-06",
             "claude-3-7-sonnet-20250219",
         ]
+        if llm_model_name not in CLOUD_MODELS and "ollama" not in llm_model_name.lower():
+            raise ValueError(f"Unknown model: {llm_model_name}. Use a cloud model or prefix with 'ollama:'")
+        
         self.llm_model_name = llm_model_name
+        self.ollama_num_ctx = ollama_num_ctx
         if "gemini" in llm_model_name:
             self.model_group = "gemini"
             genai.configure(api_key=os.environ["GEMINI_API_KEY"])
         elif "claude" in llm_model_name:
             self.model_group = "anthropic"
             self.client = anthropic.Client(api_key=os.environ["ANTHROPIC_API_KEY"])
+        elif llm_model_name.lower().startswith("ollama:"):
+            self.model_group = "ollama"
+            # Extract model name after 'ollama:' prefix
+            self.ollama_model = llm_model_name.split(":", 1)[1]
         else:
             self.model_group = "openai"
             self.client = OpenAI()
@@ -49,8 +60,56 @@ class LLMBrain:
     def reset_llm_conversation(self):
         self.llm_conversation = []
 
+    def _count_tokens_ollama(self, text: str) -> int:
+        """Use Ollama's tokenize API to get exact token count for the current model.
+        Falls back to heuristic if API not available."""
+        try:
+            url = "http://localhost:11434/api/tokenize"
+            payload = {"model": self.ollama_model, "content": text}
+            response = requests.post(url, json=payload, timeout=5)
+            response.raise_for_status()
+            tokens = response.json().get("tokens", [])
+            token_count = len(tokens)
+            print(f"[TOKENS] {self.ollama_model}: {token_count} tokens")
+            return token_count
+        except Exception:
+            # Fallback: estimate using word/token heuristic (~1.3 tokens per word)
+            return max(1, int(len(text.split()) * 1.3))
+
+    def _ollama_prompt_guard(self, prompt_text: str, episode_reward_buffer, step_number, num_episodes):
+        if self.model_group != "ollama":
+            return
+
+        prompt_tokens = self._count_tokens_ollama(prompt_text)
+        print(f"[CONTEXT WINDOW GUARD] Input prompt: {prompt_tokens} tokens / {self.ollama_num_ctx} context limit")
+        if prompt_tokens == 0 or prompt_tokens <= self.ollama_num_ctx:
+            return
+
+        tokens_per_line = 0
+        try:
+            buffer_text = str(episode_reward_buffer)
+            lines = [line for line in buffer_text.splitlines() if line.strip()]
+            if lines:
+                tokens_per_line = self._count_tokens_ollama(lines[-2])
+        except Exception:
+            tokens_per_line = 0
+
+        try:
+            remaining = max(0, int(num_episodes) - int(step_number))
+        except Exception:
+            remaining = 0
+
+        suggested_ctx = prompt_tokens + (remaining * tokens_per_line)
+        raise ValueError(
+            "Ollama prompt exceeds context window. "
+            f"Prompt tokens: {prompt_tokens}, "
+            f"ollama_num_ctx: {self.ollama_num_ctx}. "
+            f"Suggested ollama_num_ctx >= {suggested_ctx}. "
+            f"({remaining} iterations remaining × {tokens_per_line} tokens/param line)"
+        )
+
     def add_llm_conversation(self, text, role):
-        if self.model_group == "openai":
+        if self.model_group in ["openai", "ollama"]:
             self.llm_conversation.append({"role": role, "content": text})
         elif self.model_group == "anthropic":
             self.llm_conversation.append({"role": role, "content": text})
@@ -66,6 +125,14 @@ class LLMBrain:
                         messages=self.llm_conversation,
                     )
                     response = completion.choices[0].message.content
+                elif self.model_group == "ollama":
+                    response = ollama.chat(
+                        model=self.ollama_model,
+                        messages=self.llm_conversation,
+                        options={"num_ctx": self.ollama_num_ctx, "num_gpu": 99},
+                        
+                    )
+                    response = response['message']['content']
                 elif self.model_group == "anthropic":
                     message = self.client.messages.create(
                         model=self.llm_model_name,
@@ -89,7 +156,7 @@ class LLMBrain:
                     print("Waiting for 60 seconds before retrying...")
                     time.sleep(60)
 
-            if self.model_group == "openai":
+            if self.model_group in ["openai", "ollama"]:
                 # add the response to self.llm_conversation
                 self.add_llm_conversation(response, "assistant")
             else:
@@ -98,7 +165,7 @@ class LLMBrain:
             return response
 
     def query_llm_multiple_response(self, num_responses, temperature):
-        for attempt in range(5):
+        for attempt in range(10):
             try:
                 if self.model_group == "openai":
                     completion = self.client.chat.completions.create(
@@ -111,6 +178,17 @@ class LLMBrain:
                         completion.choices[i].message.content
                         for i in range(num_responses)
                     ]
+                elif self.model_group == "ollama":
+                    # Ollama doesn't support multiple responses natively,
+                    # so we generate them sequentially
+                    responses = []
+                    for _ in range(num_responses):
+                        response = ollama.chat(
+                            model=self.ollama_model,
+                            messages=self.llm_conversation,
+                            options={"num_ctx": self.ollama_num_ctx, "num_gpu": 99},
+                        )
+                        responses.append(response['message']['content'])
                 else:
                     model = genai.GenerativeModel(model_name=self.llm_model_name)
                     responses = model.generate_content(
@@ -165,7 +243,7 @@ class LLMBrain:
         self.add_llm_conversation(system_prompt, "user")
         new_parameters_with_reasoning = self.query_llm()
 
-        if self.model_group == "openai":
+        if self.model_group in ["openai", "ollama"]:
             self.add_llm_conversation(new_parameters_with_reasoning, "assistant")
         else:
             self.add_llm_conversation(new_parameters_with_reasoning, "model")
@@ -474,10 +552,12 @@ class LLMBrain:
         parse_parameters,
         step_number,
         env_desc_file,
+        num_episodes=400,
         rank=None,
         optimum=None,
         search_step_size=0.1,
         actions=None,
+        attempt_idx=0,
     ):
         self.reset_llm_conversation()
 
@@ -486,14 +566,15 @@ class LLMBrain:
                 "episode_reward_buffer_string": str(episode_reward_buffer),
                 "env_description": env_desc_file,
                 "step_number": str(step_number),
+                "num_episodes": num_episodes,
                 "rank": rank,
                 "optimum": str(optimum),
                 "step_size": str(search_step_size),
                 "actions": actions,
+                "attempt_idx": attempt_idx,
             }
         )
-
-
+        self._ollama_prompt_guard(system_prompt, episode_reward_buffer, step_number, num_episodes)
         self.add_llm_conversation(system_prompt, "user")
 
         api_start_time = time.time()
