@@ -31,3 +31,62 @@ We utilized the standard Google Gemini, Openai, and Anthropic APIs. Please insta
 
 ## Start Training
 In order to run an experiment, please run `python main.py --config <configuration_file>`.
+
+## Recent Changes (February 2026 - Taha)
+
+### Parameter Parsing is a bit more Robust
+Removed explanation requirement in the j2 files. Changed the `num_optim_semantic` file to not ask for an explanation at the end. I'm using reasoning models and using the reasoning traces as explanations. I increased focus on the actual output format. 
+
+### Local Ollama LLM Integration
+- Added support for local Ollama models
+- Usage: Set `llm_model_name: ollama:model_name` in your YAML config (e.g., `ollama:deepseek-r1:8b`)
+- No additional code changes needed
+
+### Configurable Ollama Context Window
+- Added `ollama_num_ctx` parameter (default: 4096) to configure token context limits
+- Set in YAML: `ollama_num_ctx: 50000`
+- Token counting via Ollama's tokenize API
+- Displays token counts on terminal: `[TOKENS] ollama:model: X tokens` to diagnose Context Window Saturation/Forgetting thing-a-majig
+
+### Context Guard System
+- Automatic check before sending prompts to Ollama: `[GUARD] Input prompt: X tokens / Y context limit`
+- Prevents context overflow by throwing error with suggestions
+- Calculates recommended `ollama_num_ctx` based on remaining iterations and tokens per parameter line
+
+### Parameter Parsing is a bit more Robust
+- Handles multiple outputs:
+  - `params[0]: value`
+  - `params[0] = value`
+  - space/comma-separated numbers
+- Removes `<think>` tags from reasoning models (DeepSeek-R1, Qwen)
+- Strips code block markers (```), preserves full response in logs
+
+### Visualization (Live)
+- Real-time plots update after each episode
+- Saved as `training_progress.png` in logdir
+
+### Failure Recovery
+- Increased retry attempts from 5 to 10 for robust training
+- Warning messages in prompts on failed retries:
+  - Shows attempt count (e.g., "attempt 3 out of 10")
+  - Lists number of previous failures
+  - Remaining attempts
+  - Emphasizes format correctness and value ranges
+- Logs full error details to terminal (doesn't save it to logs)
+
+### Version Constraints
+- `numpy<2.0` (gymnasium requires this; `np.bool8` was removed in 2.0+)
+- `pandas<3.0` (compatibility with numpy 1.x)
+- Added `requests` for Ollama API calls to do the context token counting
+
+### Example Configuration
+```yaml
+task: cont_state_llm_num_optim_semantics
+llm_model_name: ollama:deepseek-r1:8b
+ollama_num_ctx: 50000  # Adjust based on your prompts and model
+num_episodes: 100
+num_evaluation_episodes: 20
+bias: true
+optimum: 500
+search_step_size: 1.0
+```
