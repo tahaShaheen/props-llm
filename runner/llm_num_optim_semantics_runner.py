@@ -117,7 +117,7 @@ def run_training_loop(
         for trial_idx in range(10):
             try:
                 cpu_time, api_time, total_episodes, total_steps, total_reward = agent.train_policy(world, curr_episode_dir, attempt_idx=trial_idx)
-                overall_log_file.write(f"{episode + 1}, {cpu_time}, {api_time}, {total_episodes}, {total_steps}, {total_reward}\n")
+                overall_log_file.write(f"{episode}, {cpu_time}, {api_time}, {total_episodes}, {total_steps}, {total_reward}\n")
                 overall_log_file.flush()
                 # Update training progress plot
                 update_training_plot(logdir)
