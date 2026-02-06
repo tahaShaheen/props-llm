@@ -104,7 +104,7 @@ def run_training_loop(
     else:
         agent.replay_buffer.load(warmup_dir)
     
-    overall_log_file = open(f"{logdir}/overall_log.txt", "w")
+    overall_log_file = open(f"{logdir}/overall_log.csv", "w")
     overall_log_file.write("Iteration, CPU Time, API Time, Total Episodes, Total Steps, Total Reward\n")
     overall_log_file.flush()
     for episode in range(num_episodes):
