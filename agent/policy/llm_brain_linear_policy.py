@@ -81,7 +81,7 @@ class LLMBrain:
             return
 
         prompt_tokens = self._count_tokens_ollama(prompt_text)
-        print(f"[CONTEXT WINDOW GUARD] Input prompt: {prompt_tokens} tokens / {self.ollama_num_ctx} context limit")
+        print(f"[INPUT CONTEXT GUARD] Total input: {prompt_tokens} tokens / {self.ollama_num_ctx} context limit")
         if prompt_tokens == 0 or prompt_tokens <= self.ollama_num_ctx:
             return
 
@@ -561,7 +561,7 @@ class LLMBrain:
     ):
         self.reset_llm_conversation()
 
-        system_prompt = self.llm_si_template.render(
+        full_prompt = self.llm_si_template.render(
             {
                 "episode_reward_buffer_string": str(episode_reward_buffer),
                 "env_description": env_desc_file,
@@ -574,8 +574,38 @@ class LLMBrain:
                 "attempt_idx": attempt_idx,
             }
         )
-        self._ollama_prompt_guard(system_prompt, episode_reward_buffer, step_number, num_episodes)
-        self.add_llm_conversation(system_prompt, "user")
+        
+        # For Ollama: Split into system (static rules) and user (dynamic data) messages
+        # For other models: Keep current behavior (single user message)
+        if self.model_group == "ollama":
+            split_marker = "Next, you will see examples of params and their episodic reward f(params)."
+            parts = full_prompt.split(split_marker)
+            
+            if len(parts) == 2:
+                system_part = parts[0].strip()
+                user_part = split_marker + "\n" + parts[1].strip()
+                
+                # Add system message first (high-priority instructions)
+                self.add_llm_conversation(system_part, "system")
+                
+                # Guard check on combined tokens (system + user) for Ollama
+                combined_prompt = system_part + "\n\n" + user_part
+                self._ollama_prompt_guard(combined_prompt, episode_reward_buffer, step_number, num_episodes)
+                
+                # Add user message (dynamic data: examples, iteration, warnings)
+                self.add_llm_conversation(user_part, "user")
+                
+                # For logging, reconstruct full prompt
+                system_prompt = "SYSTEM:\n" + system_part + "\n\nUSER:\n" + user_part
+            else:
+                # Fallback if split fails
+                self._ollama_prompt_guard(full_prompt, episode_reward_buffer, step_number, num_episodes)
+                self.add_llm_conversation(full_prompt, "user")
+                system_prompt = full_prompt
+        else:
+            # Cloud APIs: use current behavior (single user message)
+            self.add_llm_conversation(full_prompt, "user")
+            system_prompt = full_prompt
 
         api_start_time = time.time()
         new_parameters_with_reasoning = self.query_llm()
@@ -593,9 +623,6 @@ class LLMBrain:
 
         return (
             new_parameters_list,
-            "system:\n"
-            + system_prompt
-            + "\n\n\nLLM:\n"
-            + new_parameters_with_reasoning,
+            system_prompt + "\n\n\nLLM:\n" + new_parameters_with_reasoning,
             api_time,
         )
