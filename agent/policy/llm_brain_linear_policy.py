@@ -558,6 +558,8 @@ class LLMBrain:
         search_step_size=0.1,
         actions=None,
         attempt_idx=0,
+        buffer_top_k=15,
+        buffer_recent_j=5,
     ):
         self.reset_llm_conversation()
 
@@ -572,6 +574,8 @@ class LLMBrain:
                 "step_size": str(search_step_size),
                 "actions": actions,
                 "attempt_idx": attempt_idx,
+                "buffer_top_k": buffer_top_k,
+                "buffer_recent_j": buffer_recent_j,
             }
         )
         

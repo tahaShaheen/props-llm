@@ -27,6 +27,8 @@ class LLMNumOptimSemanticAgent:
         env_desc_file=None,
         num_episodes=400,
         ollama_num_ctx=4096,
+        buffer_top_k=15,
+        buffer_recent_j=5,
     ):
         self.start_time = time.process_time()
         self.api_call_time = 0
@@ -39,6 +41,8 @@ class LLMNumOptimSemanticAgent:
         self.search_step_size = search_step_size
         self.env_desc_file = env_desc_file
         self.num_episodes = num_episodes
+        self.buffer_top_k = buffer_top_k
+        self.buffer_recent_j = buffer_recent_j
 
         if not self.bias:
             param_count = dim_action * dim_state
@@ -198,22 +202,47 @@ class LLMNumOptimSemanticAgent:
             return np.array(results).reshape(-1)
 
         def str_nd_examples(replay_buffer: EpisodeRewardBufferNoBias, traj_buffer: ReplayBuffer, n):
+            if not replay_buffer.buffer:
+                return ""
 
-            all_parameters = []
-            for weights, reward in replay_buffer.buffer:
-                parameters = weights
-                all_parameters.append((parameters.reshape(-1), reward))
+            episodes = []
+            for idx, (weights, reward) in enumerate(replay_buffer.buffer):
+                episodes.append({
+                    "idx": idx,
+                    "params": weights.reshape(-1),
+                    "reward": reward,
+                })
+
+            top_k = max(0, int(self.buffer_top_k))
+            recent_j = max(0, int(self.buffer_recent_j))
+
+            best_episodes = sorted(episodes, key=lambda x: x["reward"], reverse=True)[:top_k]
+            recent_episodes = episodes[-recent_j:] if recent_j > 0 else []
+
+            seen_params = set()
+            final_list = []
+
+            def add_unique(items):
+                for ep in items:
+                    param_sig = tuple(round(p, 1) for p in ep["params"])
+                    if param_sig not in seen_params:
+                        seen_params.add(param_sig)
+                        final_list.append(ep)
+
+            add_unique(best_episodes)
+            if recent_episodes:
+                add_unique(recent_episodes[:-1])
+                final_list.append(recent_episodes[-1])
 
             text = ""
             print('Num trajs in buffer:', len(traj_buffer.buffer))
-            print('Num params in buffer:', len(all_parameters))
-            for idx, (parameters, reward) in enumerate(all_parameters):
+            print('Num params in buffer:', len(episodes))
+            for ep in final_list:
                 l = ""
                 for i in range(n):
-                    l += f"params[{i}]: {parameters[i]:.5g}; "
-                fxy = reward
-                l += f"f(params): {fxy:.2f}\n"
-                # l += f"Trajectory: {traj_buffer.buffer[idx]}\n\n"
+                    l += f"params[{i}]: {ep['params'][i]:.5g}; "
+                l += f"f(params): {ep['reward']:.2f}\n"
+                # l += f"Trajectory: {traj_buffer.buffer[ep['idx']]}\n\n"
                 text += l
             return text
 
@@ -229,6 +258,8 @@ class LLMNumOptimSemanticAgent:
             self.optimum,
             self.search_step_size,
             attempt_idx=attempt_idx,
+            buffer_top_k=self.buffer_top_k,
+            buffer_recent_j=self.buffer_recent_j,
         )
         self.api_call_time += api_time
 
@@ -265,7 +296,6 @@ class LLMNumOptimSemanticAgent:
         result = np.mean(results)
         self.replay_buffer.add(new_parameter_list, result)
         # self.replay_buffer.sort()
-
         self.training_episodes += 1
 
         _cpu_time = time.process_time() - self.start_time
@@ -274,7 +304,7 @@ class LLMNumOptimSemanticAgent:
         _total_steps = self.total_steps
         _total_reward = result
         return _cpu_time, _api_time, _total_episodes, _total_steps, _total_reward
-    
+
 
     def evaluate_policy(self, world: BaseWorld, logdir):
         results = []
