@@ -2,6 +2,7 @@ from world.continuous_space_general_world import ContinualSpaceGeneralWorld
 from world.discrete_state_general_world import DiscreteStateGeneralWorld
 from agent.llm_num_optim_q_table_semantics import LLMNumOptimQTableSemanticsAgent
 from agent.llm_num_optim_linear_policy_semantics import LLMNumOptimSemanticAgent
+from utils.plotting import update_training_plot
 from jinja2 import Environment, FileSystemLoader
 import os
 import traceback
@@ -31,6 +32,7 @@ def run_training_loop(
     search_step_size=0.1,
     env_kwargs=None,
     env_desc_file=None,
+    ollama_num_ctx=4096,
 ):
     assert task in ["dist_state_llm_num_optim_semantics", "cont_state_llm_num_optim_semantics"]
 
@@ -60,6 +62,7 @@ def run_training_loop(
             optimum,
             env_kwargs=env_kwargs,
             env_desc_file=env_desc_file,
+            ollama_num_ctx=ollama_num_ctx,
         )
     else:
         world = ContinualSpaceGeneralWorld(
@@ -82,6 +85,8 @@ def run_training_loop(
             optimum,
             search_step_size,
             env_desc_file=env_desc_file,
+            num_episodes=num_episodes,
+            ollama_num_ctx=ollama_num_ctx,
         )
 
     print('init done')
@@ -103,11 +108,13 @@ def run_training_loop(
         print(f"Creating log directory: {curr_episode_dir}")
         os.makedirs(curr_episode_dir, exist_ok=True)
         
-        for trial_idx in range(5):
+        for trial_idx in range(10):
             try:
-                cpu_time, api_time, total_episodes, total_steps, total_reward = agent.train_policy(world, curr_episode_dir)
+                cpu_time, api_time, total_episodes, total_steps, total_reward = agent.train_policy(world, curr_episode_dir, attempt_idx=trial_idx)
                 overall_log_file.write(f"{episode + 1}, {cpu_time}, {api_time}, {total_episodes}, {total_steps}, {total_reward}\n")
                 overall_log_file.flush()
+                # Update training progress plot
+                update_training_plot(logdir)
                 print(f"{trial_idx + 1}th trial attempt succeeded in training")
                 break
             except Exception as e:
@@ -117,6 +124,6 @@ def run_training_loop(
                 traceback.print_exc()
                 continue
         if trial_idx == 4:
-            print(f"Episode {episode} failed to train after 5 attempts")
+            print(f"Episode {episode} failed to train after 10 attempts")
             break
     overall_log_file.close()

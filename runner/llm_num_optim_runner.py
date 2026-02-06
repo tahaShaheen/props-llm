@@ -31,6 +31,7 @@ def run_training_loop(
     optimum=1000,
     search_step_size=0.1,
     env_kwargs=None,
+    ollama_num_ctx=4096,
 ):
     assert task in ["cont_space_llm_num_optim", "cont_space_llm_num_optim_rndm_proj", "dist_state_llm_num_optim"]
 
@@ -62,6 +63,7 @@ def run_training_loop(
                 bias,
                 optimum,
                 search_step_size,
+                ollama_num_ctx=ollama_num_ctx,
             )
         elif task == "cont_space_llm_num_optim_rndm_proj":
             agent = LLMNumOptimRndmPrjAgent(
@@ -77,6 +79,7 @@ def run_training_loop(
                 rank,
                 bias,
                 optimum,
+                ollama_num_ctx=ollama_num_ctx,
             )
 
 
@@ -100,6 +103,7 @@ def run_training_loop(
             num_evaluation_episodes,
             optimum,
             env_kwargs=env_kwargs,
+            ollama_num_ctx=ollama_num_ctx,
         )
 
         print('init done')
@@ -121,7 +125,7 @@ def run_training_loop(
         print(f"Creating log directory: {curr_episode_dir}")
         os.makedirs(curr_episode_dir, exist_ok=True)
         
-        for trial_idx in range(5):
+        for trial_idx in range(10):
             try:
                 cpu_time, api_time, total_episodes, total_steps, total_reward = agent.train_policy(world, curr_episode_dir)
                 overall_log_file.write(f"{episode + 1}, {cpu_time}, {api_time}, {total_episodes}, {total_steps}, {total_reward}\n")
