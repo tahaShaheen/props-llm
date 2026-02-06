@@ -7,13 +7,13 @@ import os
 
 def update_training_plot(logdir):
 	"""
-	Read the overall_log.txt file and create a live training progress plot.
+	Read the overall_log.csv file and create a live training progress plot.
 	Updates the plot after each episode.
     
 	Args:
-		logdir: Directory containing overall_log.txt
+		logdir: Directory containing overall_log.csv
 	"""
-	log_file = os.path.join(logdir, "overall_log.txt")
+	log_file = os.path.join(logdir, "overall_log.csv")
     
 	# Check if log file exists
 	if not os.path.exists(log_file):
