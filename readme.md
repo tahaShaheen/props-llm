@@ -65,6 +65,12 @@ Removed explanation requirement in the j2 files. Changed the `num_optim_semantic
 - Real-time plots update after each episode
 - Saved as `training_progress.png` in logdir
 
+### Reduced Params Buffer
+- Buffer is curated to show only the top-K and most recent-J parameter sets
+- Prevents Repetitive Degeneration ("Context Loop") caused by large, repetitive buffer dumps, which is a problem for smaller LLMs (32b models)
+- This means that the user prompt size is smaller and almost a fixed size
+- Allows smaller context windows, making it easier to fit models + context + OS into memory
+
 ### Failure Recovery
 - Increased retry attempts from 5 to 10 for robust training
 - Warning messages in prompts on failed retries:
