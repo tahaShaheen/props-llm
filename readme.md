@@ -65,6 +65,40 @@ Removed explanation requirement in the j2 files. Changed the `num_optim_semantic
 - Real-time plots update after each episode
 - Saved as `training_progress.png` in logdir
 
+### Parallel Environment Visualizer (`eval_parallel_policy.py`)
+Tool to visualize trained policies across multiple environment instances simultaneously in a grid.
+
+- Loads trained parameters from `overall_log.csv` or other sepcified config file. 
+- Runs 10 parallel environment instances (configurable)
+- Shows per-environment rewards and mean reward across all instances
+- Spacebar restart to re-run the same policy on new instances
+
+**Usage:**
+```bash
+# Basic usage: 10 envs with config's max_traj_length
+python eval_parallel_policy.py --episode 5 --config configs/cartpole/cartpole_propsp.yaml --render
+
+# Custom number of environments
+python eval_parallel_policy.py --episode 10 --config configs/mountaincar/mountaincar_props.yaml --render --num_envs 20
+
+# Override max steps
+python eval_parallel_policy.py --episode 5 --config configs/cartpole/cartpole_propsp.yaml --render --max_steps 1000
+
+# Stats only (no visualization)
+python eval_parallel_policy.py --episode 5 --config configs/cartpole/cartpole_propsp.yaml
+```
+
+- Uses Gymnasium's `AsyncVectorEnv` for parallelization
+- Each environment runs independently, capturing RGB frames via a custom `RenderInInfoWrapper`
+- Frames are collected asynchronously and synchronized for grid animation
+- Reward tracking shows cumulative rewards updating in real-time
+- Color-coded labels: GREEN for successful completion (≥max_steps-2 frames), RED for premature termination
+- Matplotlib animation with configurable FPS (default: 10)
+- Automatically pulls `max_traj_length` from YAML config if `--max_steps` not specified
+
+- **SPACEBAR**: Restart simulation with the same parameters
+- **Close window**: Exit the visualizer
+
 ### Reduced Params Buffer
 - Buffer is curated to show only the top-K and most recent-J parameter sets
 - Prevents Repetitive Degeneration ("Context Loop") caused by large, repetitive buffer dumps, which is a problem for smaller LLMs (32b models)
