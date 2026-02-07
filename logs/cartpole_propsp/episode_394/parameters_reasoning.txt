@@ -1,0 +1,83 @@
+SYSTEM:
+You are a good global RL policy optimizer, helping me find the global optimal policy in the following environment:
+
+# Environment:
+The cartpole environment is a 2D world where a pole is attached by an un-actuated joint to a cart, which moves along a frictionless track. The pendulum is placed upright on the cart and the goal is to balance the pole by applying forces in the left and right direction on the cart.
+The state is a vector of 4 elements, representing the cart position (-4.8 to 4.8), cart velocity (-inf to inf), pole angle (-0.418 to 0.418 rad), and ple angular velocity (-inf to inf) respectively. The goal is to keep the pole upright and the cart within the bounding position of [-2.4, 2.4].
+The action space consists of 2 actions (0: push left, 1: push right).
+The policy is a linear policy with 18 parameters and works as follows: 
+action = argmax(state @ W + B), where
+state = [cart_position, cart_velocity, pole_angle, pole_angular_velocity]
+W = [[params[0], params[1]],
+    [params[2], params[3]],
+    [params[4], params[5]],
+    [params[6], params[7]]]
+B = [params[8], params[9]]
+The reward is +1 for every time step the pole is upright and the cart is within the bounding position. The episode ends when the pole falls over or the cart goes out of bounds.
+
+# Regarding the parameters **params**:
+**params** is an array of 10 float numbers.
+**params** values are in the range of [-6.0, 6.0] with 1 decimal place.
+params represent a linear policy. 
+f(params) is the episodic reward of the policy.
+
+# Here's how we'll interact:
+1. I will first provide MAX_STEPS (400) along with a few training examples.
+2. You will provide your response in the following exact format:
+    * 'params[0]: , params[1]: , params[2]: ,..., params[9]: ', aiming to maximize the function's value f(params). 
+    Please propose params values in the range of [-6.0, 6.0], with 1 decimal place.
+3. I will then provide the function's value f(params) at that point, and the current iteration.
+4. We will repeat steps 2-3 until we reach the maximum number of iterations.
+
+# Remember:
+1. **Do not propose previously seen params.**
+2. **The global optimum should be around 500.** If you are below that, this is just a local optimum. You should explore instead of exploiting.
+3. Search both positive and negative values. **During exploration, use search step size of 1.0**.
+
+USER:
+Next, you will see examples of params and their episodic reward f(params).
+You will see up to 15 top params and 5 most recent params.
+--- TOP 3 BEST PERFORMING PARAMS ---
+params[0]: 6; params[1]: 6; params[2]: -3; params[3]: 6; params[4]: -6; params[5]: 1.8; params[6]: -3.5; params[7]: 4.5; params[8]: -2.5; params[9]: -2.5; f(params): 500.00
+params[0]: 6; params[1]: 6; params[2]: -3.5; params[3]: 6; params[4]: -6; params[5]: 1.8; params[6]: -3.5; params[7]: 4.5; params[8]: -2.5; params[9]: -2.5; f(params): 500.00
+params[0]: -6; params[1]: -4.5; params[2]: 3; params[3]: 6; params[4]: -6; params[5]: 1.8; params[6]: -3.5; params[7]: 4.5; params[8]: -2.5; params[9]: -2.5; f(params): 500.00
+--- MOST RECENT 3 PARAMS ---
+params[0]: 7; params[1]: 6; params[2]: -3; params[3]: 7; params[4]: -6; params[5]: 1.8; params[6]: -3.5; params[7]: 4.5; params[8]: -2.6; params[9]: -2.6; f(params): 500.00
+params[0]: -6; params[1]: 7; params[2]: 3; params[3]: 7; params[4]: -6; params[5]: 1.8; params[6]: -3.5; params[7]: 4.5; params[8]: -2.5; params[9]: -2.5; f(params): 92.10
+params[0]: 6; params[1]: 6; params[2]: -3; params[3]: 6; params[4]: -6; params[5]: 1.8; params[6]: -3.5; params[7]: 4.5; params[8]: -2.5; params[9]: -2.5; f(params): 500.00
+
+
+Now you are at iteration 394 out of 400. Provide the results in ONLY the indicated format 'params[0]: , params[1]: , params[2]: ,..., params[9]'. Do not provide any additional texts. Otherwise your response will be useless.
+
+
+LLM:
+<think>
+Okay, so I'm trying to figure out how to find the global optimal policy for this cartpole environment. The user mentioned that the current best f(params) is around 500, which is pretty good but not perfect. They want me to explore beyond that because it's a local optimum.
+
+First, I need to understand what f(params) represents. It seems like the episodic reward, which means each time step you get +1 if the pole is upright and cart is within bounds. So higher rewards mean better policies. But since 500 is just a bit above zero, it's not great, but maybe we can find something around that area.
+
+The current best params are in the range of -6 to 6 with one decimal places. The user mentioned that exploring both positive and negative values would help, so I should stick with that idea.
+
+I remember the exploration strategy is using a step size of 1.0 during exploration. That means each new parameter value will be either +1 or -1 from the current value when we sample it. So my approach should involve systematically trying these nearby points to see if f(params) improves.
+
+The process involves interacting with the environment, getting rewards, and then adjusting params. Each time I get a reward, I can try adding or subtracting 1 from each parameter in order of magnitude (from most influential to least). This way, I explore all possible directions where parameters have the largest impact on f(params).
+
+I should start by selecting some nearby params for each position. For example, if params[0] is at a certain value, I'll try +1 and -1 for that parameter next, then proceed to others. It's important to make sure not to revisit any previously sampled params, even if they're close in value.
+
+I also need to keep track of all the evaluated params so I can avoid repeating them. Maybe a list would work well for this. Each time I evaluate a new set of params, I'll add it to this list and note the reward.
+
+As I proceed, I might notice that even in higher rewards, there's still potential to find better policies. For instance, if some parameters are at 7 or -6, perhaps tweaking those could give a better reward. But according to the user, adding values beyond +/-2 might not improve f(params), so maybe it's sufficient.
+
+I should also be cautious about overexploring, especially in regions where no improvement is seen but parameters haven't been sampled yet. It's a balance between exploration and getting near the optimal region without wasting time.
+
+In summary, my plan is to:
+
+1. Keep track of all evaluated params.
+2. For each parameter, explore +/-1 from its current value when trying new params.
+3. Evaluate f(params) after each change in order of importance (most influential parameters first).
+4. Stop when the number of iterations reaches 400.
+
+This should help me explore around the region where f=params is around 500, potentially finding a better optimal reward.
+</think>
+
+params[0]: 6; params[1]: 6; params[2]: -3; params[3]: 6; params[4]: -6; params[5]: 1.8; params[6]: -3.5; params[7]: 4.5; params[8]: -2.5; params[9]: -2.5; f(params): 500.00
