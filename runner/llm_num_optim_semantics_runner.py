@@ -105,7 +105,7 @@ def run_training_loop(
         agent.replay_buffer.load(warmup_dir)
     
     overall_log_file = open(f"{logdir}/overall_log.csv", "w")
-    overall_log_file.write("Iteration, CPU Time, API Time, Total Episodes, Total Steps, Total Reward\n")
+    overall_log_file.write("Iteration, CPU Time, API Time, Total Episodes, Total Steps, Total Reward, Parameters\n")
     overall_log_file.flush()
     for episode in range(num_episodes):
         print(f"Episode: {episode}")
@@ -114,14 +114,16 @@ def run_training_loop(
         print(f"Creating log directory: {curr_episode_dir}")
         os.makedirs(curr_episode_dir, exist_ok=True)
         
+        training_succeeded = False
         for trial_idx in range(10):
             try:
-                cpu_time, api_time, total_episodes, total_steps, total_reward = agent.train_policy(world, curr_episode_dir, attempt_idx=trial_idx)
-                overall_log_file.write(f"{episode}, {cpu_time}, {api_time}, {total_episodes}, {total_steps}, {total_reward}\n")
+                cpu_time, api_time, total_episodes, total_steps, total_reward, parameters = agent.train_policy(world, curr_episode_dir, attempt_idx=trial_idx)
+                overall_log_file.write(f"{episode}, {cpu_time}, {api_time}, {total_episodes}, {total_steps}, {total_reward}, {parameters}\n")
                 overall_log_file.flush()
                 # Update training progress plot
                 update_training_plot(logdir)
                 print(f"{trial_idx + 1}th trial attempt succeeded in training")
+                training_succeeded = True
                 break
             except Exception as e:
                 print(
@@ -129,7 +131,7 @@ def run_training_loop(
                 )
                 traceback.print_exc()
                 continue
-        if trial_idx == 4:
+        if not training_succeeded:
             print(f"Episode {episode} failed to train after 10 attempts")
             break
     overall_log_file.close()

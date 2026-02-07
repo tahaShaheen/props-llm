@@ -167,7 +167,8 @@ class LLMNumOptimQTableAgent:
         _total_episodes = self.total_episodes
         _total_steps = self.total_steps
         _total_reward = result
-        return _cpu_time, _api_time, _total_episodes, _total_steps, _total_reward
+        _parameters = str([self.q_table.mapping[i] for i in range(len(self.q_table.mapping))])
+        return _cpu_time, _api_time, _total_episodes, _total_steps, _total_reward, _parameters
     
     def evaluate_policy(self, world: BaseWorld, logdir):
         results = []
