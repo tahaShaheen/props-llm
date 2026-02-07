@@ -93,22 +93,34 @@ class LLMNumOptimQTableSemanticsAgent:
             logging_file.close()
             print(f"Result: {result}")
 
-    def train_policy(self, world: BaseWorld, logdir):
+    def train_policy(self, world: BaseWorld, logdir, attempt_idx=0):
 
         def parse_parameters(input_text):
             # This regex looks for integers or floating-point numbers (including optional sign)
-            s = input_text.split("\n")[-1]
-            print("response:", s)
+            # For Q-table, line 1 has params, line 2 has reasoning
+            # So find the line that contains the params pattern
             pattern = re.compile(r"params\[(\d+)\]:\s*([+-]?\d+(?:\.\d+)?)")
-            matches = pattern.findall(s)
-
-            # Convert matched strings to float (or int if you prefer to differentiate)
-            results = []
-            for match in matches:
-                results.append(float(match[1]))
-            print(results)
-            assert len(results) == self.rank
-            return np.array(results).reshape((self.rank,))
+            
+            lines = input_text.split("\n")
+            for line in lines:
+                matches = pattern.findall(line)
+                if matches:
+                    print("response:", line)
+                    # Convert matched strings to handle both integers and actions
+                    results = []
+                    for match in matches:
+                        try:
+                            results.append(float(match[1]))
+                        except ValueError:
+                            results.append(int(match[1]))
+                    print(results)
+                    if len(results) == self.rank:
+                        return np.array(results).reshape((self.rank,))
+            
+            # If we reach here, we couldn't parse the parameters
+            print(f"ERROR: Could not parse {self.rank} parameters from response.")
+            print(f"Full response:\n{input_text}")
+            assert False, f"Failed to parse parameters. Expected {self.rank} params but got 0"
 
         def str_nd_examples(replay_buffer: EpisodeRewardBufferNoBias, traj_buffer: ReplayBuffer, n):
             if not replay_buffer.buffer:
@@ -182,6 +194,7 @@ class LLMNumOptimQTableSemanticsAgent:
                 actions=self.actions,
                 buffer_top_k=self.buffer_top_k,
                 buffer_recent_j=self.buffer_recent_j,
+                attempt_idx=attempt_idx,
             )
             self.api_call_time += api_time
         except Exception as e:

@@ -7,6 +7,7 @@ from jinja2 import Environment, FileSystemLoader
 import os
 import traceback
 import numpy as np
+import ast
 
 
 def run_training_loop(
@@ -37,6 +38,17 @@ def run_training_loop(
     buffer_recent_j=5,
 ):
     assert task in ["dist_state_llm_num_optim_semantics", "cont_state_llm_num_optim_semantics"]
+
+    def format_parameters_for_csv(parameters):
+        try:
+            if isinstance(parameters, str):
+                parsed = ast.literal_eval(parameters)
+            else:
+                parsed = parameters
+            arr = np.array(parsed, dtype=float)
+            return np.array2string(arr, separator=" ", max_line_width=100000)
+        except Exception:
+            return str(parameters)
 
     jinja2_env = Environment(loader=FileSystemLoader(template_dir))
     llm_si_template = jinja2_env.get_template(llm_si_template_name)
@@ -117,8 +129,13 @@ def run_training_loop(
         training_succeeded = False
         for trial_idx in range(10):
             try:
-                cpu_time, api_time, total_episodes, total_steps, total_reward, parameters = agent.train_policy(world, curr_episode_dir, attempt_idx=trial_idx)
-                overall_log_file.write(f"{episode}, {cpu_time}, {api_time}, {total_episodes}, {total_steps}, {total_reward}, {parameters}\n")
+                cpu_time, api_time, total_episodes, total_steps, total_reward, parameters = agent.train_policy(
+                    world, curr_episode_dir, attempt_idx=trial_idx
+                )
+                formatted_parameters = format_parameters_for_csv(parameters)
+                overall_log_file.write(
+                    f"{episode}, {cpu_time}, {api_time}, {total_episodes}, {total_steps}, {total_reward}, {formatted_parameters}\n"
+                )
                 overall_log_file.flush()
                 # Update training progress plot
                 update_training_plot(logdir)
