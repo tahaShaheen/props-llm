@@ -182,7 +182,8 @@ class LLMNumOptimAgent:
         _total_episodes = self.total_episodes
         _total_steps = self.total_steps
         _total_reward = result
-        return _cpu_time, _api_time, _total_episodes, _total_steps, _total_reward
+        _parameters = str(new_parameter_list)
+        return _cpu_time, _api_time, _total_episodes, _total_steps, _total_reward, _parameters
     
 
     def evaluate_policy(self, world: BaseWorld, logdir):

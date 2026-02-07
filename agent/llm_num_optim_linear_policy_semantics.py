@@ -221,28 +221,40 @@ class LLMNumOptimSemanticAgent:
 
             seen_params = set()
             final_list = []
+            source_list = []  # Track which section each example comes from
 
-            def add_unique(items):
+            def add_unique(items, source):
                 for ep in items:
                     param_sig = tuple(round(p, 1) for p in ep["params"])
                     if param_sig not in seen_params:
                         seen_params.add(param_sig)
                         final_list.append(ep)
+                        source_list.append(source)
 
-            add_unique(best_episodes)
+            add_unique(best_episodes, "top")
             if recent_episodes:
-                add_unique(recent_episodes[:-1])
+                add_unique(recent_episodes[:-1], "recent")
                 final_list.append(recent_episodes[-1])
+                source_list.append("recent")
 
             text = ""
             print('Num trajs in buffer:', len(traj_buffer.buffer))
             print('Num params in buffer:', len(episodes))
-            for ep in final_list:
+            
+            current_section = None
+            for ep, source in zip(final_list, source_list):
+                # Add section header when transitioning
+                if source != current_section:
+                    if source == "top":
+                        text += f"--- TOP {len([s for s in source_list if s == 'top'])} BEST PERFORMING PARAMS ---\n"
+                    elif source == "recent":
+                        text += f"--- MOST RECENT {len([s for s in source_list if s == 'recent'])} PARAMS ---\n"
+                    current_section = source
+                
                 l = ""
                 for i in range(n):
                     l += f"params[{i}]: {ep['params'][i]:.5g}; "
                 l += f"f(params): {ep['reward']:.2f}\n"
-                # l += f"Trajectory: {traj_buffer.buffer[ep['idx']]}\n\n"
                 text += l
             return text
 
@@ -303,7 +315,8 @@ class LLMNumOptimSemanticAgent:
         _total_episodes = self.total_episodes
         _total_steps = self.total_steps
         _total_reward = result
-        return _cpu_time, _api_time, _total_episodes, _total_steps, _total_reward
+        _parameters = str(new_parameter_list)
+        return _cpu_time, _api_time, _total_episodes, _total_steps, _total_reward, _parameters
 
 
     def evaluate_policy(self, world: BaseWorld, logdir):

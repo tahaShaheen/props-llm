@@ -183,6 +183,14 @@ class LLMNumOptimRndmPrjAgent:
 
         self.training_episodes += 1
 
+        _cpu_time = time.process_time() - self.start_time
+        _api_time = self.api_call_time
+        _total_episodes = self.total_episodes
+        _total_steps = self.total_steps
+        _total_reward = result
+        _parameters = str(new_parameter_list)
+        return _cpu_time, _api_time, _total_episodes, _total_steps, _total_reward, _parameters
+
     def evaluate_policy(self, world: BaseWorld, logdir):
         results = []
         for idx in range(self.num_evaluation_episodes):
