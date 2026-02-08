@@ -8,6 +8,7 @@ import re
 import time
 from agent.policy.replay_buffer import ReplayBuffer
 from agent.policy.replay_buffer import QTableRewardTrajBuffer
+from utils.console import red, yellow, green, blue, gray
 
 
 class LLMNumOptimQTableSemanticsAgent:
@@ -80,7 +81,7 @@ class LLMNumOptimQTableSemanticsAgent:
         for episode in range(num_episodes):
             self.q_table.initialize_policy()
             # Run the episode and collect the trajectory
-            print(f"Rolling out warmup episode {episode}...")
+            print(yellow(f"Rolling out warmup episode {episode}..."))
             logging_filename = f"{logdir}/warmup_rollout_{episode}.txt"
             logging_file = open(logging_filename, "w")
             result = self.rollout_episode(world, logging_file, record=True)
@@ -91,7 +92,7 @@ class LLMNumOptimQTableSemanticsAgent:
                 result,
             )
             logging_file.close()
-            print(f"Result: {result}")
+            print(yellow(f"Result: {result}"))
 
     def train_policy(self, world: BaseWorld, logdir, attempt_idx=0):
 
@@ -105,7 +106,7 @@ class LLMNumOptimQTableSemanticsAgent:
             for line in lines:
                 matches = pattern.findall(line)
                 if matches:
-                    print("response:", line)
+                    print(blue(f"response: {line}"))
                     # Convert matched strings to handle both integers and actions
                     results = []
                     for match in matches:
@@ -119,7 +120,7 @@ class LLMNumOptimQTableSemanticsAgent:
             
             # If we reach here, we couldn't parse the parameters
             print(f"ERROR: Could not parse {self.rank} parameters from response.")
-            print(f"Full response:\n{input_text}")
+            print(gray(f"Full response:\n{input_text}"))
             assert False, f"Failed to parse parameters. Expected {self.rank} params but got 0"
 
         def str_nd_examples(replay_buffer: EpisodeRewardBufferNoBias, traj_buffer: ReplayBuffer, n):
@@ -176,8 +177,6 @@ class LLMNumOptimQTableSemanticsAgent:
                 for i in range(n):
                     l += f"params[{i}]: {ep['params'][i]:.5g}; "
                 l += f"f(params): {ep['reward']:.2f}\n"
-                if ep["idx"] < len(traj_buffer.buffer):
-                    l += f"Trajectory: {traj_buffer.buffer[ep['idx']]}\n\n"
                 text += l
             return text
 
@@ -198,9 +197,9 @@ class LLMNumOptimQTableSemanticsAgent:
             )
             self.api_call_time += api_time
         except Exception as e:
-            print("Exception occurred during policy update")
-            print(traceback.format_exc())
-            raise e
+            print(red("Policy update failed"))
+            print(red(f"Reason: {type(e).__name__}: {e}"))
+            raise
 
         print(len(self.q_table.mapping))
         print(new_parameter_list.shape)
@@ -214,7 +213,7 @@ class LLMNumOptimQTableSemanticsAgent:
         q_reasoning_file = open(q_reasoning_filename, "w")
         q_reasoning_file.write(reasoning)
         q_reasoning_file.close()
-        print("Policy updated!")
+        print(green("Policy updated!"))
 
         # Run the episode and collect the trajectory
         print(f"Rolling out episode {self.training_episodes}...")
