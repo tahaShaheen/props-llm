@@ -36,8 +36,8 @@ def update_training_plot(logdir):
 		df['CPU Time Per Episode'] = df['CPU Time'].diff().fillna(df['CPU Time'])
 		df['Steps Per Episode'] = df['Total Steps'].diff().fillna(df['Total Steps'])
         
-		# Create figure with subplots
-		fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+		# Create figure with subplots (3x2 grid to accommodate new plots)
+		fig, axes = plt.subplots(3, 2, figsize=(14, 15))
 		fig.suptitle('Training Progress', fontsize=16, fontweight='bold')
         
 		# Plot 1: Total Reward (main metric)
@@ -71,6 +71,29 @@ def update_training_plot(logdir):
 		ax4.set_ylabel('Steps', fontsize=11)
 		ax4.set_title('Steps per Episode', fontsize=12, fontweight='bold')
 		ax4.grid(True, alpha=0.3)
+        
+		# Plot 5: Context Size
+		if 'Context Size' in df.columns:
+			ax5 = axes[2, 0]
+			ax5.plot(df['Iteration'], df['Context Size'], 'c-p', linewidth=2, markersize=5)
+			ax5.set_xlabel('Episode', fontsize=11)
+			ax5.set_ylabel('Context Size (tokens)', fontsize=11)
+			ax5.set_title('Context Size per Episode', fontsize=12, fontweight='bold')
+			ax5.grid(True, alpha=0.3)
+		else:
+			axes[2, 0].axis('off')
+        
+		# Plot 6: Number of Attempts (Failure Rate)
+		if 'Num Attempts' in df.columns:
+			ax6 = axes[2, 1]
+			ax6.plot(df['Iteration'], df['Num Attempts'], 'orange', marker='h', linewidth=2, markersize=5)
+			ax6.set_xlabel('Episode', fontsize=11)
+			ax6.set_ylabel('Number of Attempts', fontsize=11)
+			ax6.set_title('Parse Attempts per Episode', fontsize=12, fontweight='bold')
+			ax6.grid(True, alpha=0.3)
+			ax6.set_ylim(bottom=0.5)
+		else:
+			axes[2, 1].axis('off')
         
 		# Adjust layout to prevent overlap
 		plt.tight_layout()
