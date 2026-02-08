@@ -183,7 +183,7 @@ class LLMNumOptimQTableSemanticsAgent:
         # Update the policy using llm_brain, q_table and replay_buffer
         print("Updating the policy...")
         try:
-            new_parameter_list, reasoning, api_time = self.llm_brain.llm_update_parameters_num_optim_semantics(
+            new_parameter_list, reasoning, api_time, context_size = self.llm_brain.llm_update_parameters_num_optim_semantics(
                 str_nd_examples(self.replay_buffer, self.traj_buffer, self.rank),
                 parse_parameters,
                 self.training_episodes,
@@ -243,7 +243,9 @@ class LLMNumOptimQTableSemanticsAgent:
         _total_steps = self.total_steps
         _total_reward = result
         _parameters = str([self.q_table.mapping[i] for i in range(len(self.q_table.mapping))])
-        return _cpu_time, _api_time, _total_episodes, _total_steps, _total_reward, _parameters
+        _context_size = context_size
+        _num_attempts = attempt_idx + 1
+        return _cpu_time, _api_time, _total_episodes, _total_steps, _total_reward, _parameters, _context_size, _num_attempts
     
     def evaluate_policy(self, world: BaseWorld, logdir):
         results = []

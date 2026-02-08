@@ -579,6 +579,9 @@ class LLMBrain:
             }
         )
         
+        # Track context size
+        context_size = 0
+        
         # For Ollama: Split into system (static rules) and user (dynamic data) messages
         # For other models: Keep current behavior (single user message)
         if self.model_group == "ollama":
@@ -594,6 +597,7 @@ class LLMBrain:
                 
                 # Guard check on combined tokens (system + user) for Ollama
                 combined_prompt = system_part + "\n\n" + user_part
+                context_size = self._count_tokens_ollama(combined_prompt)
                 self._ollama_prompt_guard(combined_prompt, episode_reward_buffer, step_number, num_episodes)
                 
                 # Add user message (dynamic data: examples, iteration, warnings)
@@ -603,11 +607,14 @@ class LLMBrain:
                 system_prompt = "SYSTEM:\n" + system_part + "\n\nUSER:\n" + user_part
             else:
                 # Fallback if split fails
+                context_size = self._count_tokens_ollama(full_prompt)
                 self._ollama_prompt_guard(full_prompt, episode_reward_buffer, step_number, num_episodes)
                 self.add_llm_conversation(full_prompt, "user")
                 system_prompt = full_prompt
         else:
             # Cloud APIs: use current behavior (single user message)
+            # Estimate context size for non-Ollama models (rough approximation)
+            context_size = max(1, int(len(full_prompt.split()) * 1.3))
             self.add_llm_conversation(full_prompt, "user")
             system_prompt = full_prompt
 
@@ -629,4 +636,5 @@ class LLMBrain:
             new_parameters_list,
             system_prompt + "\n\n\nLLM:\n" + new_parameters_with_reasoning,
             api_time,
+            context_size,
         )
