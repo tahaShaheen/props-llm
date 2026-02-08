@@ -7,6 +7,7 @@ from world.base_world import BaseWorld
 import numpy as np
 import re
 import time
+from utils.console import yellow, green, blue, gray
 
 
 class LLMNumOptimSemanticAgent:
@@ -104,7 +105,7 @@ class LLMNumOptimSemanticAgent:
         for episode in range(num_episodes):
             self.policy.initialize_policy()
             # Run the episode and collect the trajectory
-            print(f"Rolling out warmup episode {episode}...")
+            print(yellow(f"Rolling out warmup episode {episode}..."))
             logging_filename = f"{logdir}/warmup_rollout_{episode}.txt"
             logging_file = open(logging_filename, "w")
             result = self.rollout_episode(world, logging_file)
@@ -112,7 +113,7 @@ class LLMNumOptimSemanticAgent:
                 np.array(self.policy.get_parameters()).reshape(-1), world.get_accu_reward()
             )
             logging_file.close()
-            print(f"Result: {result}")
+            print(yellow(f"Result: {result}"))
         # self.replay_buffer.sort()
 
     def train_policy(self, world: BaseWorld, logdir, attempt_idx=0):
@@ -131,7 +132,7 @@ class LLMNumOptimSemanticAgent:
             
             # Print first line for debugging
             first_line = cleaned_text.split("\n")[0] if cleaned_text else ""
-            print("response:", first_line)
+            print(blue(f"response: {first_line}"))
             
             # Try multiple regex patterns to be flexible with format
             # Pattern 1: params[X]: value  (original format)
@@ -195,7 +196,7 @@ class LLMNumOptimSemanticAgent:
                 print(f"ERROR: Expected {self.rank} parameters, got {len(results)}")
                 print(f"Parsed param indices: {sorted(param_dict.keys())}")
                 print(f"{'='*80}")
-                print(f"FULL RESPONSE TEXT:\n{input_text}")
+                print(gray(f"FULL RESPONSE TEXT:\n{input_text}"))
                 print(f"{'='*80}\n")
                 assert len(results) == self.rank, f"Expected {self.rank} params, got {len(results)}"
             
@@ -291,7 +292,7 @@ class LLMNumOptimSemanticAgent:
         q_reasoning_file = open(q_reasoning_filename, "w")
         q_reasoning_file.write(reasoning)
         q_reasoning_file.close()
-        print("Policy updated!")
+        print(green("Policy updated!"))
 
         # Run the episode and collect the trajectory
         print(f"Rolling out episode {self.training_episodes}...")

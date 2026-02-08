@@ -6,6 +6,7 @@ import traceback
 import numpy as np
 import re
 import time
+from utils.console import yellow, green, blue
 
 
 class LLMNumOptimQTableAgent:
@@ -74,18 +75,18 @@ class LLMNumOptimQTableAgent:
         for episode in range(num_episodes):
             self.q_table.initialize_policy()
             # Run the episode and collect the trajectory
-            print(f"Rolling out warmup episode {episode}...")
+            print(yellow(f"Rolling out warmup episode {episode}..."))
             logging_filename = f"{logdir}/warmup_rollout_{episode}.txt"
             logging_file = open(logging_filename, "w")
             result = self.rollout_episode(world, logging_file)
-            print(f"Result: {result}")
+            print(yellow(f"Result: {result}"))
 
     def train_policy(self, world: BaseWorld, logdir):
 
         def parse_parameters(input_text):
             # This regex looks for integers or floating-point numbers (including optional sign)
             s = input_text.split("\n")[0]
-            print("response:", s)
+            print(blue(f"response: {s}"))
             pattern = re.compile(r"params\[(\d+)\]:\s*([+-]?\d+(?:\.\d+)?)")
             matches = pattern.findall(s)
 
@@ -138,7 +139,7 @@ class LLMNumOptimQTableAgent:
         q_reasoning_file = open(q_reasoning_filename, "w")
         q_reasoning_file.write(reasoning)
         q_reasoning_file.close()
-        print("Policy updated!")
+        print(green("Policy updated!"))
 
         # Run the episode and collect the trajectory
         print(f"Rolling out episode {self.training_episodes}...")

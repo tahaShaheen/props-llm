@@ -3,6 +3,7 @@ from world.discrete_state_general_world import DiscreteStateGeneralWorld
 from agent.llm_num_optim_q_table_semantics import LLMNumOptimQTableSemanticsAgent
 from agent.llm_num_optim_linear_policy_semantics import LLMNumOptimSemanticAgent
 from utils.plotting import update_training_plot
+from utils.console import red, green
 from jinja2 import Environment, FileSystemLoader
 import os
 import traceback
@@ -139,14 +140,19 @@ def run_training_loop(
                 overall_log_file.flush()
                 # Update training progress plot
                 update_training_plot(logdir)
-                print(f"{trial_idx + 1}th trial attempt succeeded in training")
+                print(green(f"{trial_idx + 1}th trial attempt succeeded in training"))
                 training_succeeded = True
                 break
             except Exception as e:
-                print(
-                    f"{trial_idx + 1}th trial attempt failed with error in training: {e}"
-                )
-                traceback.print_exc()
+                if isinstance(e, KeyError):
+                    print(red(f"{trial_idx + 1}th trial attempt failed: INVALID ACTION"))
+                else:
+                    print(
+                        red(
+                            f"{trial_idx + 1}th trial attempt failed with error in training: {e}"
+                        )
+                    )
+                    print(red(f"Error type: {type(e).__name__}"))
                 continue
         if not training_succeeded:
             print(f"Episode {episode} failed to train after 10 attempts")
