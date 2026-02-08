@@ -106,17 +106,31 @@ class LLMNumOptimRndmPrjAgent:
     def train_policy(self, world: BaseWorld, logdir, search_std):
 
         def parse_parameters(input_text):
-            # This regex looks for integers or floating-point numbers (including optional sign)
-            s = input_text.split("\n")[0]
-            print(blue(f"response: {s}"))
-            pattern = re.compile(
-                r'params\[(\d+)\]:\s*([+-]?\d+(?:\.\d+)?)'
-            )
-            matches = pattern.findall(s)
+            # Remove <think>...</think> tags first
+            import re as regex_module
+            cleaned_text = regex_module.sub(r'<think>.*?</think>', '', input_text, flags=regex_module.DOTALL)
+            
+            # Find all lines that contain params[ pattern
+            pattern = regex_module.compile(r'params\[(\d+)\]:\s*([+-]?\d+(?:\.\d+)?)')
+            
+            # Find the line with the most matches
+            best_line = None
+            best_matches = []
+            
+            for line in cleaned_text.split("\n"):
+                matches = pattern.findall(line)
+                if matches and len(matches) > len(best_matches):
+                    best_matches = matches
+                    best_line = line
+            
+            if not best_line:
+                raise ValueError(f"Could not find params in output:\n{input_text}")
+            
+            print(blue(f"response: {best_line}"))
 
-            # Convert matched strings to float (or int if you prefer to differentiate)
+            # Convert matched strings to float
             results = []
-            for match in matches:
+            for match in best_matches:
                 results.append(float(match[1]))
             print(results)
             assert len(results) == self.rank

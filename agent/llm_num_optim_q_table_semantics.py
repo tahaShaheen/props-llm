@@ -97,12 +97,14 @@ class LLMNumOptimQTableSemanticsAgent:
     def train_policy(self, world: BaseWorld, logdir, attempt_idx=0):
 
         def parse_parameters(input_text):
-            # This regex looks for integers or floating-point numbers (including optional sign)
-            # For Q-table, line 1 has params, line 2 has reasoning
-            # So find the line that contains the params pattern
-            pattern = re.compile(r"params\[(\d+)\]:\s*([+-]?\d+(?:\.\d+)?)")
+            # Remove <think>...</think> tags first
+            import re as regex_module
+            cleaned_text = regex_module.sub(r'<think>.*?</think>', '', input_text, flags=regex_module.DOTALL)
             
-            lines = input_text.split("\n")
+            # For Q-table, find the line that contains the params pattern
+            pattern = regex_module.compile(r"params\[(\d+)\]:\s*([+-]?\d+(?:\.\d+)?)")
+            
+            lines = cleaned_text.split("\n")
             for line in lines:
                 matches = pattern.findall(line)
                 if matches:
