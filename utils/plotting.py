@@ -22,14 +22,19 @@ def update_training_plot(logdir):
     
 	try:
 		print(f"[PLOT] Reading log file: {log_file}")
-		# Read the CSV log file (skipinitialspace removes spaces after commas in headers)
-		df = pd.read_csv(log_file, skipinitialspace=True)
+		# Read the CSV log file (on_bad_lines='skip' handles multiline parameter arrays)
+		df = pd.read_csv(log_file, skipinitialspace=True, on_bad_lines='skip')
         
 		if df.empty or len(df) == 0:
 			print(f"[PLOT] Log file is empty, skipping plot generation")
 			return
         
 		print(f"[PLOT] Loaded {len(df)} episodes from log file")
+		
+		# Convert Iteration to numeric and drop any invalid rows
+		df['Iteration'] = pd.to_numeric(df['Iteration'], errors='coerce')
+		df = df.dropna(subset=['Iteration'])
+		df = df.sort_values('Iteration').reset_index(drop=True)
         
 		# Calculate per-episode metrics by taking differences from cumulative values
 		df['API Time Per Episode'] = df['API Time'].diff().fillna(df['API Time'])
