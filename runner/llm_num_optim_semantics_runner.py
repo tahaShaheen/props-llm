@@ -37,6 +37,7 @@ def run_training_loop(
     ollama_num_ctx=4096,
     buffer_top_k=15,
     buffer_recent_j=5,
+    include_trajectories=True,
 ):
     assert task in ["dist_state_llm_num_optim_semantics", "cont_state_llm_num_optim_semantics"]
     
@@ -53,10 +54,12 @@ def run_training_loop(
                 parsed = ast.literal_eval(parameters)
             else:
                 parsed = parameters
-            arr = np.array(parsed, dtype=float)
-            return np.array2string(arr, separator=" ", max_line_width=100000)
+            arr = np.array(parsed, dtype=float).flatten()
+            # Convert to space-separated string manually to avoid numpy line breaks
+            arr_str = '[' + ' '.join(f'{x:.5g}' for x in arr) + ']'
+            return arr_str
         except Exception:
-            return str(parameters)
+            return str(parameters).replace('\n', ' ').replace('\r', '')
 
     jinja2_env = Environment(loader=FileSystemLoader(template_dir))
     llm_si_template = jinja2_env.get_template(llm_si_template_name)
@@ -88,6 +91,7 @@ def run_training_loop(
             ollama_num_ctx=ollama_num_ctx,
             buffer_top_k=buffer_top_k,
             buffer_recent_j=buffer_recent_j,
+            include_trajectories=include_trajectories,
         )
     else:
         world = ContinualSpaceGeneralWorld(
@@ -114,6 +118,7 @@ def run_training_loop(
             ollama_num_ctx=ollama_num_ctx,
             buffer_top_k=buffer_top_k,
             buffer_recent_j=buffer_recent_j,
+            include_trajectories=include_trajectories,
         )
 
     print('init done')
