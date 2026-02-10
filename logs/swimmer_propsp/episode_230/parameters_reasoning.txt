@@ -1,0 +1,82 @@
+You are a good global RL policy optimizer, helping me find the global optimal policy in the following environment:
+
+# Environment:
+The swimmers consist of three or more segments (’links’) and one less articulation joints (’rotors’) - one rotor joint connects exactly two links to form a linear chain. The swimmer is suspended in a two-dimensional pool and always starts in the same position (subject to some deviation drawn from a uniform distribution), and the goal is to move as fast as possible towards the right by applying torque to the rotors and using fluid friction.
+The state is a vector of 8 elements, representing the following:
+- state[0] angle of the front tip (-inf to inf rad)
+- state[1] angle of the first rotor (-inf to inf rad)
+- state[2] angle of the second rotor (-inf to inf rad)
+- state[3] velocity of the tip along the x-axis (-inf to inf m/s)
+- state[4] velocity of the tip along the y-axis (-inf to inf m/s)
+- state[5] angular velocity of front tip (-inf to inf rad/s)
+- state[6] angular velocity of first rotor (-inf to inf rad/s)
+- state[7] angular velocity of second rotor (-inf to inf rad/s) 
+The action space is a vector of 2 float numbers, representing the torques applied between the links (-1 to 1 N).
+The policy is a linear policy with 5 parameters and works as follows: 
+action = argmax(state @ W + B), where
+state = [state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7]]
+W = [[params[0], params[1]],
+    [params[2], params[3]],
+    [params[4], params[5]],
+    [params[6], params[7]],
+    [params[8], params[9]],
+    [params[10], params[11]],
+    [params[12], params[13]],
+    [params[14], params[15]]]
+b = [params[16], params[17]]
+The goal is to try to move forward. However, in the meantime, the control cost should also be minimized. The reward function is as follows:
+reward = x-velocity - 1e-4 * action^2.
+
+# Regarding the policy parameters **params**:
+**params** is an array of 18 float numbers.
+**params** values are in the range of [-6.0, 6.0] with 1 decimal place.
+params represent a linear policy.
+f(params) is the episodic reward of the policy.
+
+# Here's how we'll interact:
+1. I will first provide MAX_ITERATIONS (400) along with a few training examples.
+2. You will provide your response in the following exact format ONLY:
+   * 'params[0]: X, params[1]: Y, params[2]: Z,..., params[17]: W'
+   Propose params values in the range of [-6.0, 6.0], with 1 decimal place. OUTPUT ONLY THIS LINE, NOTHING ELSE.
+3. I will then provide the policy's obtained reward f(params) averaged over 20 episodes, given the last iteration's params.
+4. We will repeat steps 2-3 until we reach the maximum number of iterations.
+
+# Remember:
+1. **Do not propose previously seen params.**
+2. **The global optimal reward should be around 250.** If you are below that, this is just a local optimum. You should explore instead of exploiting.
+3. Search both positive and negative values. **During exploration, use search step size of 0.1**.
+
+# STATELESS STRATEGY (CRITICAL):
+1. **NO MEMORY:** You are a stateless instance. You do not remember previous attempts and you cannot plan for future attempts. You only see the buffer below.
+2. **MAXIMIZE INFORMATION GAIN:** Since you cannot plan, your single goal is to produce the most useful data point for the *next* iteration to see.
+3. **EXPLORE vs EXPLOIT:**
+    - If the rewards in the buffer are far below 250, you represent the "Explorer." Ignore the specific values in the buffer and choose a valid configuration distinct from everything listed to capture new information.
+    - If the rewards are close to 250, you represent the "Optimizer." Tweak the best parameters slightly to find the peak.
+
+
+Next, you will see examples of params, their episodic reward f(params), and the trajectories the params yield. The trajectories are in the form of (state, action), (state, action), ... until the episode ends.
+You will see up to 5 top params and 5 most recent params.
+--- TOP 5 BEST PERFORMING PARAMS ---
+params[0]: 4.5; params[1]: -0.5; params[2]: 4.5; params[3]: 0.5; params[4]: -1.5; params[5]: 0.7; params[6]: -0.8; params[7]: 0.4; params[8]: -1; params[9]: -0.6; params[10]: -0.4; params[11]: -4; params[12]: 4; params[13]: 0.9; params[14]: 4; params[15]: -1.2; params[16]: 1; params[17]: 1; f(params): 158.59
+params[0]: 4.6; params[1]: -0.4; params[2]: 4.6; params[3]: 0.6; params[4]: -1.4; params[5]: 0.8; params[6]: -0.8; params[7]: 0.4; params[8]: -1; params[9]: -0.6; params[10]: -0.3; params[11]: -3.9; params[12]: 4.2; params[13]: 0.9; params[14]: 4.1; params[15]: -1.4; params[16]: 0.8; params[17]: 0.9; f(params): 156.01
+params[0]: 3.8; params[1]: -0.4; params[2]: 3.8; params[3]: 0.8; params[4]: -2; params[5]: 0.6; params[6]: -0.9; params[7]: 0.3; params[8]: -1.2; params[9]: -0.7; params[10]: -0.4; params[11]: -3.5; params[12]: 4; params[13]: 0.8; params[14]: 4; params[15]: -1.5; params[16]: 1; params[17]: 1; f(params): 155.04
+params[0]: 1; params[1]: -0.4; params[2]: 2.5; params[3]: 1.2; params[4]: -2.3; params[5]: 0.4; params[6]: -0.9; params[7]: 0.1; params[8]: -1.2; params[9]: -0.8; params[10]: -0.5; params[11]: -4.9; params[12]: 3.9; params[13]: 0.7; params[14]: 4.1; params[15]: -1.9; params[16]: 0.8; params[17]: -1.3; f(params): 153.94
+params[0]: 4; params[1]: -0.3; params[2]: 4; params[3]: 0.9; params[4]: -1.8; params[5]: 0.7; params[6]: -0.8; params[7]: 0.4; params[8]: -1.1; params[9]: -0.6; params[10]: -0.3; params[11]: -4; params[12]: 4.2; params[13]: 0.9; params[14]: 4.2; params[15]: -1.4; params[16]: 0.9; params[17]: 0.9; f(params): 153.69
+--- MOST RECENT 5 PARAMS ---
+params[0]: -4.5; params[1]: 1.2; params[2]: -4.4; params[3]: 2; params[4]: -3; params[5]: -0.8; params[6]: 0.3; params[7]: -1.1; params[8]: 3; params[9]: 0.5; params[10]: -2; params[11]: 4; params[12]: -3.5; params[13]: 2.1; params[14]: -4.8; params[15]: -0.2; params[16]: 2.5; params[17]: -1.3; f(params): 48.33
+params[0]: 4.9; params[1]: -0.3; params[2]: 4.9; params[3]: 0.7; params[4]: -1.6; params[5]: 0.9; params[6]: -0.7; params[7]: 0.5; params[8]: -1.3; params[9]: -0.7; params[10]: -0.4; params[11]: -4.5; params[12]: 4.8; params[13]: 1; params[14]: 4.7; params[15]: -1.3; params[16]: 1; params[17]: 1; f(params): 144.25
+params[0]: 4.8; params[1]: -0.6; params[2]: 4.8; params[3]: 0.7; params[4]: -1.7; params[5]: 0.8; params[6]: -0.8; params[7]: 0.5; params[8]: -1.1; params[9]: -0.5; params[10]: -0.3; params[11]: -4.1; params[12]: 4.7; params[13]: 0.8; params[14]: 4.7; params[15]: -1.3; params[16]: 1; params[17]: 1; f(params): 138.82
+params[0]: 2.5; params[1]: 0; params[2]: 2.5; params[3]: 0.5; params[4]: -1; params[5]: 0.6; params[6]: -0.5; params[7]: 0.3; params[8]: -0.8; params[9]: -0.4; params[10]: -0.3; params[11]: -3.5; params[12]: 3.5; params[13]: 0.8; params[14]: 3.5; params[15]: -1; params[16]: 1.2; params[17]: 0.9; f(params): 151.15
+params[0]: 5; params[1]: -1; params[2]: 5; params[3]: 1; params[4]: -2; params[5]: 1; params[6]: -1; params[7]: 0.5; params[8]: -1; params[9]: -0.8; params[10]: -0.5; params[11]: -5; params[12]: 5; params[13]: 1; params[14]: 5; params[15]: -1.5; params[16]: 2; params[17]: 1.5; f(params): 116.11
+
+
+Now you are at iteration 230 out of 400. 
+Provide an explanation or reasoning for your choice of params.
+Then output the proposed params in the following exact format ONLY:
+params[0]: X, params[1]: Y, params[2]: Z,..., params[17]: W
+
+
+
+
+LLM:
+params[0]: 4.7, params[1]: -0.6, params[2]: 4.7, params[3]: 0.8, params[4]: -1.6, params[5]: 0.9, params[6]: -0.8, params[7]: 0.5, params[8]: -1.2, params[9]: -0.7, params[10]: -0.4, params[11]: -4.1, params[12]: 4.8, params[13]: 0.9, params[14]: 4.8, params[15]: -1.4, params[16]: 1.0, params[17]: 1.0
