@@ -243,7 +243,7 @@ class LLMNumOptimSemanticAgent:
             print('Num params in buffer:', len(episodes))
             
             current_section = None
-            for ep, source in zip(final_list, source_list):
+            for traj_idx, (ep, source) in enumerate(zip(final_list, source_list)):
                 # Add section header when transitioning
                 if source != current_section:
                     if source == "top":
@@ -257,6 +257,16 @@ class LLMNumOptimSemanticAgent:
                     l += f"params[{i}]: {ep['params'][i]:.5g}; "
                 l += f"f(params): {ep['reward']:.2f}\n"
                 text += l
+                
+                # Add trajectory if available
+                if traj_idx < len(traj_buffer.buffer):
+                    trajectory = traj_buffer.buffer[traj_idx].get_trajectory()
+                    if trajectory:
+                        text += "Trajectory: "
+                        for state, action, reward in trajectory:
+                            text += f"({state},{action}) "
+                        text += "\n"
+            
             return text
 
         # Update the policy using llm_brain, q_table and replay_buffer
@@ -266,10 +276,11 @@ class LLMNumOptimSemanticAgent:
             parse_parameters,
             self.training_episodes,
             self.env_desc_file,
-            self.num_episodes,
-            self.rank,
-            self.optimum,
-            self.search_step_size,
+            num_episodes=self.num_episodes,
+            rank=self.rank,
+            optimum=self.optimum,
+            search_step_size=self.search_step_size,
+            num_evaluation_episodes=self.num_evaluation_episodes,
             attempt_idx=attempt_idx,
             buffer_top_k=self.buffer_top_k,
             buffer_recent_j=self.buffer_recent_j,
