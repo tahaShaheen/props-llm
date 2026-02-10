@@ -192,7 +192,7 @@ class LLMBrain:
                     message = completion.choices[0].message
                     response = message.content
                     # LM Studio / gpt-oss may return reasoning separately
-                    reasoning = getattr(message, "reasoning", None)
+                    reasoning = getattr(message, "thinking", None)
                     if reasoning:
                         response = f"thinking\n{reasoning}\ndone thinking\n{response}"
                 elif self.model_group == "ollama":
@@ -208,7 +208,7 @@ class LLMBrain:
                     )
                     message = result.get("message", {})
                     content = message.get("content", "")
-                    reasoning = message.get("reasoning")
+                    reasoning = message.get("thinking")
                     if reasoning:
                         response = f"thinking\n{reasoning}\ndone thinking\n{content}"
                     else:
