@@ -30,7 +30,7 @@ def run_training_loop(
     warmup_dir,
     bias=None,
     rank=None,
-    optimum=1000,
+    optimum=None,
     search_step_size=0.1,
     env_kwargs=None,
     env_desc_file=None,
@@ -39,6 +39,13 @@ def run_training_loop(
     buffer_recent_j=5,
 ):
     assert task in ["dist_state_llm_num_optim_semantics", "cont_state_llm_num_optim_semantics"]
+    
+    # Validate and warn about optimum parameter
+    if optimum is None:
+        print("[WARNING] optimum is None! Ensure 'optimum' is defined in your YAML config file.")
+        optimum = 1.0  # Fallback default
+    else:
+        print(f"[INFO] Using optimum value from config: {optimum}")
 
     def format_parameters_for_csv(parameters):
         try:
@@ -77,6 +84,7 @@ def run_training_loop(
             optimum,
             env_kwargs=env_kwargs,
             env_desc_file=env_desc_file,
+            num_episodes=num_episodes,
             ollama_num_ctx=ollama_num_ctx,
             buffer_top_k=buffer_top_k,
             buffer_recent_j=buffer_recent_j,
