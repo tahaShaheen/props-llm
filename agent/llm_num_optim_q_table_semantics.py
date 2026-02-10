@@ -30,6 +30,7 @@ class LLMNumOptimQTableSemanticsAgent:
         ollama_num_ctx=4096,
         buffer_top_k=15,
         buffer_recent_j=5,
+        include_trajectories=True,
     ):
         self.start_time = time.process_time()
         self.api_call_time = 0
@@ -43,6 +44,7 @@ class LLMNumOptimQTableSemanticsAgent:
         self.buffer_top_k = buffer_top_k
         self.buffer_recent_j = buffer_recent_j
         self.num_episodes = num_episodes
+        self.include_trajectories = include_trajectories
 
         self.q_table = QTable(actions=actions, states=states)
         self.replay_buffer = EpisodeRewardBufferNoBias(max_size=max_traj_count)
@@ -101,7 +103,13 @@ class LLMNumOptimQTableSemanticsAgent:
         def parse_parameters(input_text):
             # Remove <think>...</think> tags first
             import re as regex_module
-            cleaned_text = regex_module.sub(r'<think>.*?</think>', '', input_text, flags=regex_module.DOTALL)
+            cleaned_text = input_text
+            cleaned_text = regex_module.sub(
+                r"(?is)\bthinking\b.*?\bdone thinking\b",
+                "",
+                cleaned_text,
+            )
+            cleaned_text = regex_module.sub(r'<think>.*?</think>', '', cleaned_text, flags=regex_module.DOTALL)
             
             # For Q-table, find the line that contains the params pattern
             pattern = regex_module.compile(r"params\[(\d+)\]:\s*([+-]?\d+(?:\.\d+)?)")
@@ -183,8 +191,8 @@ class LLMNumOptimQTableSemanticsAgent:
                 l += f"f(params): {ep['reward']:.2f}\n"
                 text += l
                 
-                # Add trajectory if available
-                if traj_idx < len(traj_buffer.buffer):
+                # Add trajectory if available and enabled
+                if self.include_trajectories and traj_idx < len(traj_buffer.buffer):
                     trajectory = traj_buffer.buffer[traj_idx].get_trajectory()
                     if trajectory:
                         text += "Trajectory: "

@@ -30,6 +30,7 @@ class LLMNumOptimSemanticAgent:
         ollama_num_ctx=4096,
         buffer_top_k=15,
         buffer_recent_j=5,
+        include_trajectories=True,
     ):
         self.start_time = time.process_time()
         self.api_call_time = 0
@@ -44,6 +45,7 @@ class LLMNumOptimSemanticAgent:
         self.num_episodes = num_episodes
         self.buffer_top_k = buffer_top_k
         self.buffer_recent_j = buffer_recent_j
+        self.include_trajectories = include_trajectories
 
         if not self.bias:
             param_count = dim_action * dim_state
@@ -258,8 +260,8 @@ class LLMNumOptimSemanticAgent:
                 l += f"f(params): {ep['reward']:.2f}\n"
                 text += l
                 
-                # Add trajectory if available
-                if traj_idx < len(traj_buffer.buffer):
+                # Add trajectory if available and enabled
+                if self.include_trajectories and traj_idx < len(traj_buffer.buffer):
                     trajectory = traj_buffer.buffer[traj_idx].get_trajectory()
                     if trajectory:
                         text += "Trajectory: "
