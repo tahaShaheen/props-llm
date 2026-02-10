@@ -26,6 +26,7 @@ class LLMNumOptimQTableSemanticsAgent:
         optimum,
         env_kwargs=None,
         env_desc_file=None,
+        num_episodes=400,
         ollama_num_ctx=4096,
         buffer_top_k=15,
         buffer_recent_j=5,
@@ -41,6 +42,7 @@ class LLMNumOptimQTableSemanticsAgent:
         self.env_desc_file = env_desc_file
         self.buffer_top_k = buffer_top_k
         self.buffer_recent_j = buffer_recent_j
+        self.num_episodes = num_episodes
 
         self.q_table = QTable(actions=actions, states=states)
         self.replay_buffer = EpisodeRewardBufferNoBias(max_size=max_traj_count)
@@ -166,7 +168,7 @@ class LLMNumOptimQTableSemanticsAgent:
             print('Num params in buffer:', len(episodes))
             
             current_section = None
-            for ep, source in zip(final_list, source_list):
+            for traj_idx, (ep, source) in enumerate(zip(final_list, source_list)):
                 # Add section header when transitioning
                 if source != current_section:
                     if source == "top":
@@ -180,6 +182,16 @@ class LLMNumOptimQTableSemanticsAgent:
                     l += f"params[{i}]: {ep['params'][i]:.5g}; "
                 l += f"f(params): {ep['reward']:.2f}\n"
                 text += l
+                
+                # Add trajectory if available
+                if traj_idx < len(traj_buffer.buffer):
+                    trajectory = traj_buffer.buffer[traj_idx].get_trajectory()
+                    if trajectory:
+                        text += "Trajectory: "
+                        for state, action, reward in trajectory:
+                            text += f"({state},{action}) "
+                        text += "\n"
+            
             return text
 
         # Update the policy using llm_brain, q_table and replay_buffer
@@ -190,8 +202,10 @@ class LLMNumOptimQTableSemanticsAgent:
                 parse_parameters,
                 self.training_episodes,
                 self.env_desc_file,
-                self.rank,
-                self.optimum,
+                num_episodes=self.num_episodes,
+                rank=self.rank,
+                optimum=self.optimum,
+                num_evaluation_episodes=self.num_evaluation_episodes,
                 actions=self.actions,
                 buffer_top_k=self.buffer_top_k,
                 buffer_recent_j=self.buffer_recent_j,
