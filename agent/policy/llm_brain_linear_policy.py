@@ -3,6 +3,7 @@ import random
 import numpy as np
 import os
 import time
+import subprocess
 from jinja2 import Template
 # from openai import OpenAI
 # import google.generativeai as genai
@@ -38,17 +39,40 @@ class LLMBrain:
             "gpt-4o-2024-08-06",
             "claude-3-7-sonnet-20250219",
         ]
-        if llm_model_name not in CLOUD_MODELS and "ollama" not in llm_model_name.lower():
-            raise ValueError(f"Unknown model: {llm_model_name}. Use a cloud model or prefix with 'ollama:'")
+        base_url = os.getenv("OPENAI_BASE_URL") or os.getenv("LMSTUDIO_BASE_URL")
+        if (
+            llm_model_name not in CLOUD_MODELS
+            and "ollama" not in llm_model_name.lower()
+            and not base_url
+        ):
+            raise ValueError(
+                f"Unknown model: {llm_model_name}. Use a cloud model, set OPENAI_BASE_URL, or prefix with 'ollama:'"
+            )
         
+        is_ollama_prefixed = llm_model_name.lower().startswith("ollama:")
+        normalized_model_name = llm_model_name.split(":", 1)[1] if is_ollama_prefixed else llm_model_name
         self.llm_model_name = llm_model_name
         self.ollama_num_ctx = ollama_num_ctx
+        self._optimal_gpu_layers = None  # Cache for GPU layer calculation
         if "gemini" in llm_model_name:
             self.model_group = "gemini"
             genai.configure(api_key=os.environ["GEMINI_API_KEY"])
         elif "claude" in llm_model_name:
             self.model_group = "anthropic"
             self.client = anthropic.Client(api_key=os.environ["ANTHROPIC_API_KEY"])
+        elif "gpt-oss" in normalized_model_name.lower() and base_url:
+            self.model_group = "openai"
+            self.llm_model_name = normalized_model_name
+            try:
+                from openai import OpenAI
+            except ImportError as exc:
+                raise ImportError(
+                    "OpenAI client not installed. Install openai to use OPENAI_BASE_URL with gpt-oss."
+                ) from exc
+            self.client = OpenAI(
+                base_url=base_url,
+                api_key=os.getenv("OPENAI_API_KEY", "lm-studio"),
+            )
         elif llm_model_name.lower().startswith("ollama:"):
             self.model_group = "ollama"
             # Extract model name after 'ollama:' prefix
@@ -56,6 +80,47 @@ class LLMBrain:
         else:
             self.model_group = "openai"
             self.client = OpenAI()
+
+    def _calculate_optimal_gpu_layers(self):
+        """Calculate optimal num_gpu layers based on available VRAM.
+        For 2x RTX 3060 (12GB each = 24GB total), aim for 80% VRAM usage.
+        Returns the number of layers to offload to GPU."""
+        if self.model_group != "ollama":
+            return None
+        
+        try:
+            # Get available VRAM across all GPUs
+            result = subprocess.run(
+                ['nvidia-smi', '--query-gpu=memory.free', '--format=csv,noheader,nounits'],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode != 0:
+                print("[GPU MEMORY] nvidia-smi not available, using conservative estimate")
+                return 20  # Conservative default
+            
+            vram_values = [int(x.strip()) for x in result.stdout.strip().split('\n') if x.strip()]
+            total_vram_mb = sum(vram_values)
+            total_vram_gb = total_vram_mb / 1024
+            
+            # Strategy: Use 99% of available VRAM for model layers
+            usable_vram_gb = total_vram_gb * 0.99
+            
+            # Estimate bytes per layer
+            # For typical quantized models: ~400MB per layer
+            bytes_per_layer = 400 * 1024 * 1024  # 400MB per layer
+            
+            optimal_layers = max(5, int((usable_vram_gb * 1024 * 1024 * 1024) / bytes_per_layer))
+            
+            print(f"[GPU MEMORY] Total VRAM: {total_vram_gb:.1f}GB | "
+                  f"Usable (99%): {usable_vram_gb:.1f}GB | "
+                  f"Estimated GPU layers: {optimal_layers}")
+            
+            return optimal_layers
+            
+        except Exception as e:
+            print(f"[GPU MEMORY] Could not detect GPU VRAM: {e}")
+            print("[GPU MEMORY] Using conservative estimate: 10 layers")
+            return 10  # Conservative fallback
 
     def reset_llm_conversation(self):
         self.llm_conversation = []
@@ -124,15 +189,30 @@ class LLMBrain:
                         model=self.llm_model_name,
                         messages=self.llm_conversation,
                     )
-                    response = completion.choices[0].message.content
+                    message = completion.choices[0].message
+                    response = message.content
+                    # LM Studio / gpt-oss may return reasoning separately
+                    reasoning = getattr(message, "reasoning", None)
+                    if reasoning:
+                        response = f"thinking\n{reasoning}\ndone thinking\n{response}"
                 elif self.model_group == "ollama":
-                    response = ollama.chat(
+                    # Calculate optimal GPU layers on first call, then cache
+                    if self._optimal_gpu_layers is None:
+                        self._optimal_gpu_layers = self._calculate_optimal_gpu_layers()
+                    
+                    result = ollama.chat(
                         model=self.ollama_model,
                         messages=self.llm_conversation,
-                        options={"num_ctx": self.ollama_num_ctx, "num_gpu": 99},
+                        options={"num_ctx": self.ollama_num_ctx, "num_gpu": self._optimal_gpu_layers},
                         
                     )
-                    response = response['message']['content']
+                    message = result.get("message", {})
+                    content = message.get("content", "")
+                    reasoning = message.get("reasoning")
+                    if reasoning:
+                        response = f"thinking\n{reasoning}\ndone thinking\n{content}"
+                    else:
+                        response = content
                 elif self.model_group == "anthropic":
                     message = self.client.messages.create(
                         model=self.llm_model_name,
@@ -174,21 +254,31 @@ class LLMBrain:
                         n=num_responses,
                         temperature=temperature,
                     )
-                    responses = [
-                        completion.choices[i].message.content
-                        for i in range(num_responses)
-                    ]
+                    responses = []
+                    for i in range(num_responses):
+                        message = completion.choices[i].message
+                        content = message.content
+                        reasoning = getattr(message, "reasoning", None)
+                        if reasoning:
+                            content = f"thinking\n{reasoning}\ndone thinking\n{content}"
+                        responses.append(content)
                 elif self.model_group == "ollama":
                     # Ollama doesn't support multiple responses natively,
                     # so we generate them sequentially
                     responses = []
                     for _ in range(num_responses):
-                        response = ollama.chat(
+                        result = ollama.chat(
                             model=self.ollama_model,
                             messages=self.llm_conversation,
                             options={"num_ctx": self.ollama_num_ctx, "num_gpu": 99},
                         )
-                        responses.append(response['message']['content'])
+                        message = result.get("message", {})
+                        content = message.get("content", "")
+                        reasoning = message.get("reasoning")
+                        if reasoning:
+                            responses.append(f"thinking\n{reasoning}\ndone thinking\n{content}")
+                        else:
+                            responses.append(content)
                 else:
                     model = genai.GenerativeModel(model_name=self.llm_model_name)
                     responses = model.generate_content(
@@ -557,6 +647,7 @@ class LLMBrain:
         optimum=None,
         search_step_size=0.1,
         actions=None,
+        num_evaluation_episodes=20,
         attempt_idx=0,
         buffer_top_k=15,
         buffer_recent_j=5,
@@ -573,6 +664,7 @@ class LLMBrain:
                 "optimum": str(optimum),
                 "step_size": str(search_step_size),
                 "actions": actions,
+                "num_evaluation_episodes": num_evaluation_episodes,
                 "attempt_idx": attempt_idx,
                 "buffer_top_k": buffer_top_k,
                 "buffer_recent_j": buffer_recent_j,
