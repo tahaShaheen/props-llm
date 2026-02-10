@@ -110,13 +110,19 @@ def run_parallel_envs_fast(env_name, policy, num_envs=10, max_steps=500, render=
             actions = policy.get_action_batch(states)
         elif policy and hasattr(policy, 'get_action'):
             action_values = np.array([policy.get_action(s.reshape(-1, 1)).flatten() for s in states])
-            actions = np.argmax(action_values, axis=1)
+            # Only argmax for discrete action spaces; use directly for continuous
+            if isinstance(envs.single_action_space, gym.spaces.Discrete):
+                actions = np.argmax(action_values, axis=1)
+            else:
+                actions = action_values
         elif policy: 
             actions = np.array([policy.mapping[int(s)] for s in states])
         else: 
             actions = envs.action_space.sample()
 
-        actions = np.where(active_envs, actions, 0)
+        # Broadcast mask for both discrete (10,) and continuous (10, N) actions
+        mask = active_envs if actions.ndim == 1 else active_envs[:, None]
+        actions = np.where(mask, actions, 0)
 
         # --- LOGGING ---
         # (Simplified logging for speed, since visualizer is key now)
