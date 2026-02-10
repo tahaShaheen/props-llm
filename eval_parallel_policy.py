@@ -109,12 +109,24 @@ def run_parallel_envs_fast(env_name, policy, num_envs=10, max_steps=500, render=
         if policy and hasattr(policy, 'get_action_batch'):
             actions = policy.get_action_batch(states)
         elif policy and hasattr(policy, 'get_action'):
-            action_values = np.array([policy.get_action(s.reshape(-1, 1)).flatten() for s in states])
-            # Only argmax for discrete action spaces; use directly for continuous
-            if isinstance(envs.single_action_space, gym.spaces.Discrete):
-                actions = np.argmax(action_values, axis=1)
+            # Check policy type to handle discrete vs continuous states
+            try:
+                from agent.policy.q_table import QTable
+                is_q_table = isinstance(policy, QTable)
+            except ImportError:
+                is_q_table = False
+            
+            if is_q_table:
+                # Q-table: discrete states (ints), get_action returns action directly
+                actions = np.array([int(policy.get_action(int(s))) for s in states])
             else:
-                actions = action_values
+                # LinearPolicy: reshape state and get action values
+                action_values = np.array([policy.get_action(s.reshape(-1, 1)).flatten() for s in states])
+                # For discrete action spaces, use argmax; for continuous, use values directly
+                if isinstance(envs.single_action_space, gym.spaces.Discrete):
+                    actions = np.argmax(action_values, axis=1)
+                else:
+                    actions = action_values
         elif policy: 
             actions = np.array([policy.mapping[int(s)] for s in states])
         else: 
