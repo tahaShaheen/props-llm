@@ -1,0 +1,159 @@
+You are good global RL policy optimizer, helping me find the global optimal policy in the following environment:
+
+# Environment:
+The FrozenLake environment is a 2D 4x4 grid world (4 rows, 4 columns) where the agent can move left, down, right, or up. 
+The state is between 0 and 15, representing the which grid the agent is in. The top row is 0 to 3, 2nd row is 4 to 7, 3rd row is 8 to 11, bottom row is 12 to 15. 
+The environment is slippery, which means when the agent takes an action, it will go to 3 directions with equal probability.
+- When the agent takes action 0, it will pick from [move down, move left, move up] with equal probability.
+- When the agent takes action 1, it will pick from [move right, move down, move left] with equal probability.
+- When the agent takes action 2, it will pick from [move up, move right, move down] with equal probability.
+- When the agent takes action 3, it will pick from [move left, move up, move right] with equal probability.
+The goal is to reach the state 15 (the right bottom grid), which will yield a +1 reward. All other states yield a reward of 0. However, there are some holes in the map that will end the game once the agent step onto it. You need to explore through it by reading history trajectories.
+The policy is a function that maps the state to the action to take. The policy is represented by an array of 16 numbers. The value of params[i] represents the action to take when the state is i. The value of params[0] means which action to take when the agent is on the top left grid (0, 0). The value of params[1] means which action to take when the agent is on the top second grid (0, 1). So on and so forth. The agent should locate the wholes via previous explored trajectiores and pick actions that do not have possibility of falling into the wholes.
+
+# Regarding the policy parameters **params**:
+**params** is an array of 16 numbers.
+**params** values should be chosen from [0, 1, 2, 3].
+The value of params[i] represents the action to take when the state is i.
+f(params) is the episodic reward of the policy.
+
+# Here's how we'll interact:
+1. I will first provide MAX_ITERATIONS (5000) along with a few training examples.
+2. You will provide your response in the following exact format ONLY:
+   * 'params[0]: X, params[1]: Y, params[2]: Z,..., params[15]: W'
+   Propose params values from [0, 1, 2, 3]. OUTPUT ONLY THIS LINE, NOTHING ELSE.
+3. I will then provide the policy's obtained reward f(params) averaged over 20 episodes, given the last iteration's params.
+4. We will repeat steps 2-3 until we reach the maximum number of iterations.
+
+# Remember:
+1. **Do not propose previously seen params.**
+2. **The global optimal reward should be around 1.0.**
+3. Search all the possible values of params.
+
+# STATELESS STRATEGY (CRITICAL):
+1. **NO MEMORY:** You are a stateless instance. You do not remember previous attempts and you cannot plan for future attempts. You only see the buffer below.
+2. **MAXIMIZE INFORMATION GAIN:** Since you cannot plan, your single goal is to produce the most useful data point for the *next* iteration to see.
+3. **EXPLORE vs EXPLOIT:**
+   - If the rewards in the buffer are far below 1.0, you represent the "Explorer." Ignore the specific values in the buffer and choose a valid configuration distinct from everything listed to capture new information.
+   - If the rewards are close to 1.0, you represent the "Optimizer." Tweak the best parameters slightly to find the peak.
+
+Next, you will see examples of params, their episodic reward f(params), and the trajectories the params yield. The trajectories are in the form of (state, action), (state, action), ... until the agent falls into a hole or gets to the goal. 
+You will see up to 10 top params and 5 most recent params.
+--- TOP 5 BEST PERFORMING PARAMS ---
+params[0]: 1; params[1]: 3; params[2]: 1; params[3]: 3; params[4]: 0; params[5]: 1; params[6]: 1; params[7]: 2; params[8]: 3; params[9]: 1; params[10]: 0; params[11]: 2; params[12]: 1; params[13]: 3; params[14]: 2; params[15]: 3; f(params): 0.45
+Trajectory: (0,1) (4,2) (8,2) 
+params[0]: 1; params[1]: 3; params[2]: 1; params[3]: 3; params[4]: 0; params[5]: 1; params[6]: 1; params[7]: 2; params[8]: 3; params[9]: 1; params[10]: 2; params[11]: 0; params[12]: 1; params[13]: 2; params[14]: 3; params[15]: 3; f(params): 0.35
+Trajectory: (0,1) (4,3) 
+params[0]: 2; params[1]: 3; params[2]: 1; params[3]: 3; params[4]: 0; params[5]: 1; params[6]: 1; params[7]: 2; params[8]: 3; params[9]: 1; params[10]: 0; params[11]: 2; params[12]: 1; params[13]: 3; params[14]: 2; params[15]: 3; f(params): 0.35
+Trajectory: (0,1) (1,0) 
+params[0]: 1; params[1]: 3; params[2]: 1; params[3]: 3; params[4]: 0; params[5]: 1; params[6]: 1; params[7]: 2; params[8]: 3; params[9]: 1; params[10]: 2; params[11]: 3; params[12]: 1; params[13]: 2; params[14]: 3; params[15]: 3; f(params): 0.35
+Trajectory: (0,2) (1,0) (1,0) 
+params[0]: 2; params[1]: 3; params[2]: 1; params[3]: 3; params[4]: 2; params[5]: 0; params[6]: 1; params[7]: 2; params[8]: 3; params[9]: 1; params[10]: 0; params[11]: 2; params[12]: 1; params[13]: 3; params[14]: 2; params[15]: 3; f(params): 0.30
+Trajectory: (0,3) (0,3) (0,3) (0,3) (1,2) (1,2) (1,2) (1,2) 
+--- MOST RECENT 4 PARAMS ---
+params[0]: 1; params[1]: 3; params[2]: 1; params[3]: 3; params[4]: 0; params[5]: 1; params[6]: 1; params[7]: 2; params[8]: 3; params[9]: 1; params[10]: 0; params[11]: 2; params[12]: 1; params[13]: 3; params[14]: 3; params[15]: 3; f(params): 0.15
+Trajectory: (0,3) (1,3) (1,3) (1,3) (2,3) (2,3) (1,3) (2,3) (2,3) (3,0) 
+params[0]: 2; params[1]: 3; params[2]: 1; params[3]: 3; params[4]: 0; params[5]: 1; params[6]: 1; params[7]: 3; params[8]: 2; params[9]: 1; params[10]: 0; params[11]: 3; params[12]: 2; params[13]: 0; params[14]: 3; params[15]: 3; f(params): 0.15
+Trajectory: (0,0) (0,0) (0,0) (0,0) (0,0) (0,0) (0,0) (0,0) (4,0) (0,0) (0,0) (4,0) (4,0) (4,0) (8,3) (4,0) (0,0) (4,0) (0,0) (0,0) (4,0) (0,0) (0,0) (0,0) (0,0) (4,0) (8,3) (4,0) (4,0) (8,3) (9,3) (10,1) 
+params[0]: 2; params[1]: 3; params[2]: 2; params[3]: 1; params[4]: 0; params[5]: 1; params[6]: 1; params[7]: 2; params[8]: 3; params[9]: 3; params[10]: 0; params[11]: 1; params[12]: 3; params[13]: 2; params[14]: 3; params[15]: 3; f(params): 0.05
+Trajectory: (0,0) (4,1) (8,1) (8,1) (8,1) 
+params[0]: 2; params[1]: 3; params[2]: 1; params[3]: 3; params[4]: 0; params[5]: 1; params[6]: 1; params[7]: 3; params[8]: 2; params[9]: 1; params[10]: 0; params[11]: 3; params[12]: 2; params[13]: 0; params[14]: 3; params[15]: 3; f(params): 0.00
+Trajectory: (0,3) (0,3) (1,0) (1,0) (1,0) (1,0) (1,0) 
+
+
+Now you are at iteration 907 out of 5000. OUTPUT ONLY THIS SINGLE LINE:
+params[0]: X, params[1]: Y, params[2]: Z,..., params[15]: W
+Do NOT output anything else. No explanation, no reasoning, nothing.
+
+
+
+LLM:
+<think>
+Okay, so I'm trying to help find the global optimal policy for this FrozenLake environment. Let me start by understanding the problem thoroughly.
+
+First, the environment is a 4x4 grid with states numbered from 0 (top-left) to 15 (bottom-right). The goal is to reach state 15 for a reward of +1, and all other states give 0 except when falling into a hole, which ends the episode. The agent's actions are slippery—each action leads to three possible directions with equal probability. So, for example, moving right might take the agent left, down, or up instead.
+
+The policy is defined by an array of 16 numbers (params[0] to params[15]), each indicating the action taken in that state. The challenge is to find the optimal set of actions that maximizes the average reward over multiple episodes.
+
+Looking at the provided data, I see several previous parameter configurations and their corresponding rewards. The top performers have rewards around 0.35-0.45, which are below the target of 1.0. This suggests we're in the exploration phase because these rewards aren't close to optimal yet.
+
+The trajectories show that some policies either get stuck near holes or take too long to reach the goal. For instance, one trajectory repeatedly moves right without making progress towards state 15. Another falls into a hole early on.
+
+Given that I'm supposed to maximize information gain and avoid repeating previous params, I need to propose a new set of parameters that explore different paths. Let's consider states near the holes (like 0, which is adjacent to a hole at 3) and ensure they don't lead towards it.
+
+For state 0, if we choose action 1 (right), there's a chance to move down or up, which might avoid the hole. Alternatively, action 2 (up) would stay in place since it's already at the top row. Maybe setting params[0] to 2 could help avoid moving into the hole.
+
+Looking at state 3, if the agent takes action 1 (right), it might move down or left. But moving down from 3 is safe as it goes to state 7. Alternatively, perhaps a different action would be better for certain states.
+
+I think I should adjust some key states' actions. For example, in state 0, trying action 2 (up) won't change the position since up from row 0 stays at row 0, but maybe it's safer than moving right or down which could risk falling into a hole.
+
+Wait, no—if the agent is at state 0 and takes action 0 (left), it would stay in state 0 because it can't move left from column 0. Similarly, action 1 might take it to states that are risky. So perhaps for state 0, choosing an action that either keeps it in place or moves right but avoids the hole.
+
+Alternatively, maybe setting params[0] to 2 (up) is safer because up doesn't change the state, avoiding any risk of moving into a hole immediately. But I'm not sure if staying put helps in reaching the goal eventually.
+
+Another approach: states near the bottom-right should have actions that move towards 15. For example, state 14 might benefit from moving right to reach 15. So params[14] could be set to action 0 (down) or 2 (up), depending on where it is.
+
+Wait, actually, in a 4x4 grid, state numbering goes row-wise, so state 14 is the third cell in the fourth row (assuming rows are 0-3). Wait no, let me clarify: each row has four states. So row 0: 0,1,2,3; row 1:4,5,6,7; row2:8,9,10,11; row3:12,13,14,15.
+
+So state 14 is the third cell in row3 (columns are 0-3). So moving right from 14 would go to 15, which is the goal. Therefore, params[14] should be set to action that has a chance to move right. Action 0 for down isn't applicable since it's already on row3. Action 1 (right) could lead to state15, so setting params[14] to 1 would help.
+
+Similarly, in state 12, which is the first cell of row3, moving right leads to 13, then 14, then 15. So maybe setting params[12] to action that moves right or down? Wait, from 12 (row3, column0), moving right would go to state13, which is adjacent to a hole at 14? Or wait, are holes present in certain states?
+
+Wait, the initial problem statement didn't specify where the holes are. Oh, it says some states are holes but doesn't list them. So I need to infer based on trajectories.
+
+Looking at the trajectories:
+
+In one case, starting from state0 with action1 (right) leads to state4, which is row1, column0. Then action2 (up?) from 4 might lead back or elsewhere. But in another trajectory, moving right from state0 led towards a hole because the next states were (0,3), which suggests maybe state3 is a hole? Or perhaps state7 is a hole.
+
+Wait, looking at the trajectories:
+
+One trajectory was (0,1) -> (4,2). So action1 from 0 leads to 4. Then action2 from 4 leads to 8. From 8, action2 again. But that might not be leading towards the goal but instead moving down each time.
+
+Another trajectory: (0,3) led to a hole because after some steps, it fell into it.
+
+So I think states like 0, 3, 4, and others may have holes adjacent or in them. For example, state7 might be a hole since from 4, action2 leads to 8, but if there's a hole at 7, then moving down from 4 (action1) could lead into it.
+
+Wait, perhaps the holes are located at certain positions. From the trajectories, when an agent takes certain actions, they fall into holes quickly, so those must be states adjacent to the ones with parameters set in certain ways.
+
+But without knowing exactly where the holes are, I need to make educated guesses based on the trajectories provided.
+
+Given that, perhaps the best approach is to adjust the policy for key states near potential holes and towards the goal. For example, setting params[0] to 2 (up) might prevent moving into a hole from state0.
+
+Similarly, in state3, choosing an action that doesn't lead directly into a hole. If state3's adjacent states include a hole, then action1 or others may be safer.
+
+But without knowing the exact holes, it's challenging, but I can try to adjust based on the trajectories given.
+
+Looking at one trajectory where starting from 0 with action1 (right) leads to 4, then action2 leads to 8. Maybe that path isn't effective in reaching 15 quickly. So perhaps adjusting params[4] and other states along that path would help.
+
+Alternatively, maybe setting some key states to move towards the goal directly or probabilistically.
+
+Another thought: since each action has three possible outcomes, the policy needs to choose actions that maximize the probability of eventually reaching the goal while avoiding holes as much as possible. This might involve a combination of moving towards the goal and sometimes taking steps back if they are safer.
+
+Considering all this, I'll propose a new set of parameters. Let's try to set key states like 0,4,8,12 (the starting points of each row) to move right or down, depending on their position.
+
+For example:
+
+- params[0] = 1: action1 might help in moving towards the goal.
+- params[1] = 3: action3 could vary directions but perhaps avoid holes.
+- Similarly, for other states, set actions that have a chance to move right or down.
+
+But since I can't be sure without knowing hole positions, I'll aim for a balanced approach. Maybe setting some states to move right and others to move down based on their row and column.
+
+Alternatively, considering the most recent params which had higher rewards, perhaps tweaking certain states slightly could improve performance. For instance, in the top-performing param set, changing action at state7 from 2 to 3 might help avoid a hole or get closer to the goal.
+
+Wait, looking back: one of the top params was:
+
+params[0]:1; ... ; params[7]:2
+
+Changing that to 3 might change the movement possibilities. So in state7 (row1, column3), action3 could lead to moving left, up, or right. But since it's already at column3, right would stay in place? Or is it a different grid setup.
+
+Alternatively, perhaps setting params[7] = 3 allows more varied movements which might help escape potential holes.
+
+Another approach: if the agent is near the bottom-right (states12-15), they should prioritize moving right or down to reach state15. So for states12,13,14: set their actions to move right if possible.
+
+But without knowing hole positions, it's tricky. Maybe focusing on states that are crucial for progress towards the goal and adjusting their actions to encourage movement in that direction.
+
+Overall, given the current data and the need to explore new parameter configurations, I'll propose a new set where certain key states have different actions than before, aiming to either move closer to the goal or avoid known risky paths.
+</think>
+
+params[0]: 2, params[1]: 3, params[2]: 1, params[3]: 3, params[4]: 2, params[5]: 1, params[6]: 1, params[7]: 3, params[8]: 3, params[9]: 1, params[10]: 0, params[11]: 2, params[12]: 1, params[13]: 3, params[14]: 3, params[15]: 3
