@@ -194,7 +194,7 @@ class LLMBrain:
                     # LM Studio / gpt-oss may return reasoning separately
                     reasoning = getattr(message, "thinking", None)
                     if reasoning:
-                        response = f"thinking\n{reasoning}\ndone thinking\n{response}"
+                        response = f"<think>{reasoning}</think>\n{response}"
                 elif self.model_group == "ollama":
                     # Calculate optimal GPU layers on first call, then cache
                     if self._optimal_gpu_layers is None:
@@ -210,7 +210,7 @@ class LLMBrain:
                     content = message.get("content", "")
                     reasoning = message.get("thinking")
                     if reasoning:
-                        response = f"thinking\n{reasoning}\ndone thinking\n{content}"
+                        response = f"<think>{reasoning}</think>\n{content}"
                     else:
                         response = content
                 elif self.model_group == "anthropic":
@@ -260,7 +260,7 @@ class LLMBrain:
                         content = message.content
                         reasoning = getattr(message, "reasoning", None)
                         if reasoning:
-                            content = f"thinking\n{reasoning}\ndone thinking\n{content}"
+                            content = f"<think>{reasoning}</think>\n{content}"
                         responses.append(content)
                 elif self.model_group == "ollama":
                     # Ollama doesn't support multiple responses natively,
@@ -276,7 +276,7 @@ class LLMBrain:
                         content = message.get("content", "")
                         reasoning = message.get("reasoning")
                         if reasoning:
-                            responses.append(f"thinking\n{reasoning}\ndone thinking\n{content}")
+                            responses.append(f"<think>{reasoning}</think>\n{content}")
                         else:
                             responses.append(content)
                 else:
