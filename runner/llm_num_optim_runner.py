@@ -128,15 +128,43 @@ def run_training_loop(
     else:
         agent.replay_buffer.load(warmup_dir)
     
-    overall_log_file = open(f"{logdir}/overall_log.csv", "w")
-    overall_log_file.write("Iteration, CPU Time, API Time, Total Episodes, Total Steps, Total Reward, Parameters\n")
-    overall_log_file.flush()
-    for episode in range(num_episodes):
+    overall_log_path = f"{logdir}/overall_log.csv"
+    start_episode = 0
+    logged_episodes = set()
+    if os.path.exists(overall_log_path):
+        try:
+            with open(overall_log_path, "r") as log_file:
+                lines = [line.strip() for line in log_file.readlines() if line.strip()]
+            if len(lines) > 1:
+                for row in lines[1:]:
+                    try:
+                        logged_episodes.add(int(row.split(",", 1)[0]))
+                    except ValueError:
+                        continue
+                if logged_episodes:
+                    start_episode = max(logged_episodes) + 1
+                print(green(f"Resuming overall_log.csv from episode {start_episode}"))
+        except Exception as e:
+            print(red(f"Failed to parse existing overall_log.csv, starting from 0: {e}"))
+            start_episode = 0
+
+    overall_log_file = open(overall_log_path, "a" if start_episode > 0 else "w")
+    if start_episode == 0:
+        overall_log_file.write("Iteration, CPU Time, API Time, Total Episodes, Total Steps, Total Reward, Parameters\n")
+        overall_log_file.flush()
+
+    for episode in range(start_episode, num_episodes):
+        if episode in logged_episodes:
+            print(green(f"Skipping already logged episode {episode}"))
+            continue
         print(f"Episode: {episode}")
         # create log dir
         curr_episode_dir = f"{logdir}/episode_{episode}"
-        print(f"Creating log directory: {curr_episode_dir}")
-        os.makedirs(curr_episode_dir, exist_ok=True)
+        if os.path.exists(curr_episode_dir):
+            print(green(f"Reusing existing episode directory: {curr_episode_dir}"))
+        else:
+            print(f"Creating log directory: {curr_episode_dir}")
+            os.makedirs(curr_episode_dir, exist_ok=True)
         
         training_succeeded = False
         for trial_idx in range(10):
