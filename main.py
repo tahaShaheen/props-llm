@@ -5,6 +5,7 @@ from runner import (
 )
 from runner import llm_num_optim_runner
 from runner import llm_num_optim_semantics_runner
+from runner import llm_num_optim_semantics_feedback_runner
 # import gym_maze
 # import gym_navigation
 from envs import nim, pong
@@ -27,6 +28,10 @@ def main():
         llm_num_optim_runner.run_training_loop(**config)
     elif config["task"] in ["dist_state_llm_num_optim_semantics", "cont_state_llm_num_optim_semantics"]:
         llm_num_optim_semantics_runner.run_training_loop(**config)
+    elif config["task"] in ["dist_state_llm_num_optim_semantics_with_feedback", "cont_state_llm_num_optim_semantics_with_feedback"]:
+        # Pass config path for eval_parallel_policy visualization
+        config["config_path"] = args.config
+        llm_num_optim_semantics_feedback_runner.run_training_loop(**config)
     else:
         raise ValueError(f"Task {config['task']} not recognized.")
 
