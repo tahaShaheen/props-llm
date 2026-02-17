@@ -649,8 +649,6 @@ class LLMBrain:
         actions=None,
         num_evaluation_episodes=20,
         attempt_idx=0,
-        buffer_top_k=15,
-        buffer_recent_j=5,
     ):
         self.reset_llm_conversation()
 
@@ -666,8 +664,6 @@ class LLMBrain:
                 "actions": actions,
                 "num_evaluation_episodes": num_evaluation_episodes,
                 "attempt_idx": attempt_idx,
-                "buffer_top_k": buffer_top_k,
-                "buffer_recent_j": buffer_recent_j,
             }
         )
         
@@ -722,6 +718,99 @@ class LLMBrain:
         #     "user",
         # )
         # new_parameters = self.query_llm()
+        new_parameters_list = parse_parameters(new_parameters_with_reasoning)
+
+        return (
+            new_parameters_list,
+            system_prompt + "\n\n\nLLM:\n" + new_parameters_with_reasoning,
+            api_time,
+            context_size,
+        )
+
+    def llm_update_parameters_with_feedback(
+        self,
+        episode_reward_buffer,
+        parse_parameters,
+        step_number,
+        env_desc_file,
+        num_episodes=400,
+        rank=None,
+        optimum=None,
+        search_step_size=0.1,
+        actions=None,
+        num_evaluation_episodes=20,
+        attempt_idx=0,
+        human_feedback="",
+        last_policy_params="",
+    ):
+        """
+        Update policy parameters with human feedback from the loop.
+        
+        This method is similar to llm_update_parameters_num_optim_semantics but
+        includes human feedback and last policy parameters in the prompt.
+        """
+        self.reset_llm_conversation()
+
+        full_prompt = self.llm_si_template.render(
+            {
+                "episode_reward_buffer_string": str(episode_reward_buffer),
+                "env_description": env_desc_file,
+                "step_number": str(step_number),
+                "num_episodes": num_episodes,
+                "rank": rank,
+                "optimum": str(optimum),
+                "step_size": str(search_step_size),
+                "actions": actions,
+                "num_evaluation_episodes": num_evaluation_episodes,
+                "attempt_idx": attempt_idx,
+                "human_feedback": human_feedback,
+                "last_policy_params": last_policy_params,
+            }
+        )
+        
+        # Track context size
+        context_size = 0
+        
+        # For Ollama: Split into system (static rules) and user (dynamic data) messages
+        # For other models: Keep current behavior (single user message)
+        if self.model_group == "ollama":
+            split_marker = "Next, you will see examples of params"
+            parts = full_prompt.split(split_marker)
+            
+            if len(parts) == 2:
+                system_part = parts[0].strip()
+                user_part = split_marker + parts[1].strip()
+                
+                # Add system message first (high-priority instructions)
+                self.add_llm_conversation(system_part, "system")
+                
+                # Guard check on combined tokens (system + user) for Ollama
+                combined_prompt = system_part + "\n\n" + user_part
+                context_size = self._count_tokens_ollama(combined_prompt)
+                self._ollama_prompt_guard(combined_prompt, episode_reward_buffer, step_number, num_episodes)
+                
+                # Add user message (dynamic data: examples, iteration, warnings, feedback)
+                self.add_llm_conversation(user_part, "user")
+                
+                # For logging, reconstruct full prompt
+                system_prompt = "SYSTEM:\n" + system_part + "\n\nUSER:\n" + user_part
+            else:
+                # Fallback if split fails
+                context_size = self._count_tokens_ollama(full_prompt)
+                self._ollama_prompt_guard(full_prompt, episode_reward_buffer, step_number, num_episodes)
+                self.add_llm_conversation(full_prompt, "user")
+                system_prompt = full_prompt
+        else:
+            # Cloud APIs: use current behavior (single user message)
+            # Estimate context size for non-Ollama models (rough approximation)
+            context_size = max(1, int(len(full_prompt.split()) * 1.3))
+            self.add_llm_conversation(full_prompt, "user")
+            system_prompt = full_prompt
+
+        api_start_time = time.time()
+        new_parameters_with_reasoning = self.query_llm()
+        api_time = time.time() - api_start_time
+
         new_parameters_list = parse_parameters(new_parameters_with_reasoning)
 
         return (
