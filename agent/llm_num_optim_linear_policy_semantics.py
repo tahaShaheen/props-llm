@@ -28,8 +28,6 @@ class LLMNumOptimSemanticAgent:
         env_desc_file=None,
         num_episodes=400,
         ollama_num_ctx=4096,
-        buffer_top_k=15,
-        buffer_recent_j=5,
         include_trajectories=True,
     ):
         self.start_time = time.process_time()
@@ -43,8 +41,6 @@ class LLMNumOptimSemanticAgent:
         self.search_step_size = search_step_size
         self.env_desc_file = env_desc_file
         self.num_episodes = num_episodes
-        self.buffer_top_k = buffer_top_k
-        self.buffer_recent_j = buffer_recent_j
         self.include_trajectories = include_trajectories
 
         if not self.bias:
@@ -208,61 +204,22 @@ class LLMNumOptimSemanticAgent:
             if not replay_buffer.buffer:
                 return ""
 
-            episodes = []
-            for idx, (weights, reward) in enumerate(replay_buffer.buffer):
-                episodes.append({
-                    "idx": idx,
-                    "params": weights.reshape(-1),
-                    "reward": reward,
-                })
-
-            top_k = max(0, int(self.buffer_top_k))
-            recent_j = max(0, int(self.buffer_recent_j))
-
-            best_episodes = sorted(episodes, key=lambda x: x["reward"], reverse=True)[:top_k]
-            recent_episodes = episodes[-recent_j:] if recent_j > 0 else []
-
-            seen_params = set()
-            final_list = []
-            source_list = []  # Track which section each example comes from
-
-            def add_unique(items, source):
-                for ep in items:
-                    param_sig = tuple(round(p, 1) for p in ep["params"])
-                    if param_sig not in seen_params:
-                        seen_params.add(param_sig)
-                        final_list.append(ep)
-                        source_list.append(source)
-
-            add_unique(best_episodes, "top")
-            if recent_episodes:
-                add_unique(recent_episodes[:-1], "recent")
-                final_list.append(recent_episodes[-1])
-                source_list.append("recent")
-
+            # Simply iterate through all episodes in the buffer
             text = ""
             print('Num trajs in buffer:', len(traj_buffer.buffer))
-            print('Num params in buffer:', len(episodes))
+            print('Num params in buffer:', len(replay_buffer.buffer))
             
-            current_section = None
-            for traj_idx, (ep, source) in enumerate(zip(final_list, source_list)):
-                # Add section header when transitioning
-                if source != current_section:
-                    if source == "top":
-                        text += f"--- TOP {len([s for s in source_list if s == 'top'])} BEST PERFORMING PARAMS ---\n"
-                    elif source == "recent":
-                        text += f"--- MOST RECENT {len([s for s in source_list if s == 'recent'])} PARAMS ---\n"
-                    current_section = source
-                
+            for idx, (weights, reward) in enumerate(replay_buffer.buffer):
+                params = weights.reshape(-1)
                 l = ""
                 for i in range(n):
-                    l += f"params[{i}]: {ep['params'][i]:.5g}; "
-                l += f"f(params): {ep['reward']:.2f}\n"
+                    l += f"params[{i}]: {params[i]:.5g}; "
+                l += f"f(params): {reward:.2f}\n"
                 text += l
                 
                 # Add trajectory if available and enabled
-                if self.include_trajectories and traj_idx < len(traj_buffer.buffer):
-                    trajectory = traj_buffer.buffer[traj_idx].get_trajectory()
+                if self.include_trajectories and idx < len(traj_buffer.buffer):
+                    trajectory = traj_buffer.buffer[idx].get_trajectory()
                     if trajectory:
                         text += "Trajectory: "
                         for state, action, reward in trajectory:
@@ -284,8 +241,6 @@ class LLMNumOptimSemanticAgent:
             search_step_size=self.search_step_size,
             num_evaluation_episodes=self.num_evaluation_episodes,
             attempt_idx=attempt_idx,
-            buffer_top_k=self.buffer_top_k,
-            buffer_recent_j=self.buffer_recent_j,
         )
         self.api_call_time += api_time
 
