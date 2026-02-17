@@ -99,6 +99,28 @@ python eval_parallel_policy.py --episode 5 --config configs/cartpole/cartpole_pr
 - **SPACEBAR**: Restart simulation with the same parameters
 - **Close window**: Exit the visualizer
 
+### Human-in-the-Loop Feedback System (`propspf` task)
+Interactive training mode where human observers provide qualitative feedback to guide LLM policy optimization.
+
+1. LLM generates policy parameters and the policy executes
+2. At configurable intervals, `eval_parallel_policy.py` launches automatically to visualize the best-performing policy
+3. Human observer watches the policy execute and provides qualitative feedback
+4. Feedback is incorporated into the LLM prompt for subsequent iterations
+5. LLM uses both reward numbers AND human observations to improve the policy
+
+**YAML Configuration:**
+```yaml
+task: cont_state_llm_num_optim_semantics_with_feedback  # or dist_state_llm_num_optim_semantics_with_feedback
+feedback_interval: 5                    # Ask for feedback every N episodes
+include_feedback_with_params: true      # Show feedback with params in LLM prompts
+param_min: -6.0                        # Minimum valid parameter value (continuous tasks only)
+param_max: 6.0                         # Maximum valid parameter value (continuous tasks only)
+```
+
+**Example Configs:**
+- `configs/walker2d/walker2d_propspf.yaml` - Walker2D with human feedback (continuous)
+- `configs/frozenlake/frozenlake_propspf.yaml` - FrozenLake with human feedback (discrete)
+
 ### Reduced Params Buffer
 - Buffer is curated to show only the top-K and most recent-J parameter sets
 - Prevents Repetitive Degeneration ("Context Loop") caused by large, repetitive buffer dumps, which is a problem for smaller LLMs (32b models)
