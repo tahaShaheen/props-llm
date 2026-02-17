@@ -22,6 +22,7 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from matplotlib.gridspec import GridSpec
 import time
+from datetime import datetime
 
 # --- WRAPPER ---
 class RenderInInfoWrapper(Wrapper):
@@ -192,14 +193,16 @@ def run_parallel_envs_fast(env_name, policy, num_envs=10, max_steps=500, render=
     
     return results
 
-def visualize_parallel(frames, rewards, reward_history, num_envs, max_steps=500, fps=10, restart_flag=None):
+def visualize_parallel(frames, rewards, reward_history, num_envs, max_steps=500, fps=10, restart_flag=None, save_video_path=None):
     if not frames or not any(frames):
         print("No frames captured.")
         return
 
     print("Generating visualization...")
+    if save_video_path:
+        print(f"Will save video to: {save_video_path}")
     print("Press SPACEBAR to RE-RUN the simulation!")
-    print("Close the window to EXIT.")
+    print("Press 'Q' to CLOSE the window.")
     
     grid_cols = min(num_envs, 5)  # Max 5 columns for better layout
     grid_rows = int(np.ceil(num_envs / grid_cols))
@@ -273,6 +276,15 @@ def visualize_parallel(frames, rewards, reward_history, num_envs, max_steps=500,
         blit=False, repeat=True, save_count=anim_length, cache_frame_data=False
     )
     
+    # --- SAVE VIDEO ---
+    if save_video_path:
+        print("Saving GIF... (this may take a moment)")
+        try:
+            ani.save(save_video_path, writer='pillow', fps=fps)
+            print(f"✓ GIF saved successfully: {save_video_path}")
+        except Exception as e:
+            print(f"⚠ Could not save GIF: {e}")
+    
     # --- KEY HANDLER ---
     def on_key(event):
         if event.key == ' ':
@@ -280,6 +292,9 @@ def visualize_parallel(frames, rewards, reward_history, num_envs, max_steps=500,
             if restart_flag is not None:
                 restart_flag[0] = True # Signal main loop to restart
             plt.close() # Close window to unblock main loop
+        elif event.key == 'q':
+            print("\n>> CLOSING WINDOW...\n")
+            plt.close()
     
     fig.canvas.mpl_connect('key_press_event', on_key)
     plt.show()
@@ -319,6 +334,13 @@ def main():
     if args.save_trajectories:
         logdir = config.get('logdir', 'logs')
         save_file = os.path.join(logdir, f'episode_{args.episode}_trajectories.npz')
+    
+    # Setup video saving directory and path
+    logdir = config.get('logdir', 'logs')
+    # Extract environment name from logdir (e.g., 'logs/frozenlake_propsp' -> 'frozenlake_propsp')
+    env_name = os.path.basename(logdir)
+    video_dir = os.path.join('videos', env_name)
+    os.makedirs(video_dir, exist_ok=True)
 
     # --- EXECUTION LOOP ---
     while True:
@@ -338,13 +360,18 @@ def main():
             # [False] means "Do not restart" by default
             restart_simulation = [False]
             
+            # Generate timestamp-based video filename (YYMMDDHHMMSS format)
+            timestamp = datetime.now().strftime('%y%m%d%H%M%S')
+            video_path = os.path.join(video_dir, f'{timestamp}.gif')
+            
             visualize_parallel(
                 results['frames'], 
                 results['rewards'], 
                 results['reward_history'], 
                 args.num_envs,
                 max_steps=args.max_steps,
-                restart_flag=restart_simulation
+                restart_flag=restart_simulation,
+                save_video_path=video_path
             )
             
             # Check if user pressed Spacebar (restart_flag becomes True)
