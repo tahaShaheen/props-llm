@@ -35,6 +35,7 @@ def run_training_loop(
     env_kwargs=None,
     env_desc_file=None,
     ollama_num_ctx=4096,
+    ollama_num_predict=None,
     include_trajectories=True,
 ):
     assert task in ["dist_state_llm_num_optim_semantics", "cont_state_llm_num_optim_semantics"]
@@ -87,6 +88,7 @@ def run_training_loop(
             env_desc_file=env_desc_file,
             num_episodes=num_episodes,
             ollama_num_ctx=ollama_num_ctx,
+            ollama_num_predict=ollama_num_predict,
             include_trajectories=include_trajectories,
         )
     else:
@@ -112,6 +114,7 @@ def run_training_loop(
             env_desc_file=env_desc_file,
             num_episodes=num_episodes,
             ollama_num_ctx=ollama_num_ctx,
+            ollama_num_predict=ollama_num_predict,
             include_trajectories=include_trajectories,
         )
 
