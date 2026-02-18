@@ -1045,12 +1045,7 @@ class LLMNumOptimSemanticAgentWithFeedback(LLMNumOptimSemanticAgent):
                 l = ""
                 for i in range(n):
                     l += f"params[{i}]: {params[i]:.5g}; "
-                predicted_reward = self.get_predicted_reward_for_buffer_idx(idx)
-                if predicted_reward is None:
-                    predicted_reward_str = "N/A"
-                else:
-                    predicted_reward_str = f"{predicted_reward:.2f}"
-                l += f"f(params): {reward:.2f}; predicted_reward: {predicted_reward_str}\n"
+                l += f"f(params): {reward:.2f}\n"
                 text += l
                 
                 # Add feedback if available and enabled
