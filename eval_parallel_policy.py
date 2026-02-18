@@ -193,7 +193,7 @@ def run_parallel_envs_fast(env_name, policy, num_envs=10, max_steps=500, render=
     
     return results
 
-def visualize_parallel(frames, rewards, reward_history, num_envs, max_steps=500, fps=10, restart_flag=None, save_video_path=None):
+def visualize_parallel(frames, rewards, reward_history, num_envs, max_steps=500, fps=10, restart_flag=None, save_video_path=None, show_window=True):
     if not frames or not any(frames):
         print("No frames captured.")
         return
@@ -201,8 +201,9 @@ def visualize_parallel(frames, rewards, reward_history, num_envs, max_steps=500,
     print("Generating visualization...")
     if save_video_path:
         print(f"Will save video to: {save_video_path}")
-    print("Press SPACEBAR to RE-RUN the simulation!")
-    print("Press 'Q' to CLOSE the window.")
+    if show_window:
+        print("Press SPACEBAR to RE-RUN the simulation!")
+        print("Press 'Q' to CLOSE the window.")
     
     grid_cols = min(num_envs, 5)  # Max 5 columns for better layout
     grid_rows = int(np.ceil(num_envs / grid_cols))
@@ -296,8 +297,11 @@ def visualize_parallel(frames, rewards, reward_history, num_envs, max_steps=500,
             print("\n>> CLOSING WINDOW...\n")
             plt.close()
     
-    fig.canvas.mpl_connect('key_press_event', on_key)
-    plt.show()
+    if show_window:
+        fig.canvas.mpl_connect('key_press_event', on_key)
+        plt.show()
+    else:
+        plt.close(fig)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -308,6 +312,8 @@ def main():
     parser.add_argument('--max_steps', type=int, default=None)
     parser.add_argument('--render', action='store_true')
     parser.add_argument('--save_trajectories', action='store_true')
+    parser.add_argument('--save_video_path', type=str, default=None)
+    parser.add_argument('--no_window', action='store_true')
     
     args = parser.parse_args()
     
@@ -344,6 +350,7 @@ def main():
 
     # --- EXECUTION LOOP ---
     while True:
+        print(f"Using params from training episode {args.episode} (source: {log_file})")
         results = run_parallel_envs_fast(
             config['gym_env_name'],
             policy,
@@ -360,9 +367,13 @@ def main():
             # [False] means "Do not restart" by default
             restart_simulation = [False]
             
-            # Generate timestamp-based video filename (YYMMDDHHMMSS format)
-            timestamp = datetime.now().strftime('%y%m%d%H%M%S')
-            video_path = os.path.join(video_dir, f'{timestamp}.gif')
+            # Use explicit save path if provided; otherwise generate timestamp-based filename.
+            if args.save_video_path:
+                video_path = args.save_video_path
+                os.makedirs(os.path.dirname(video_path), exist_ok=True)
+            else:
+                timestamp = datetime.now().strftime('%y%m%d%H%M%S')
+                video_path = os.path.join(video_dir, f'{timestamp}.gif')
             
             visualize_parallel(
                 results['frames'], 
@@ -371,11 +382,12 @@ def main():
                 args.num_envs,
                 max_steps=args.max_steps,
                 restart_flag=restart_simulation,
-                save_video_path=video_path
+                save_video_path=video_path,
+                show_window=not args.no_window,
             )
             
             # Check if user pressed Spacebar (restart_flag becomes True)
-            if not restart_simulation[0]:
+            if not restart_simulation[0] or args.no_window:
                 print("Exiting...")
                 break # Break loop if window closed normally
         else:
