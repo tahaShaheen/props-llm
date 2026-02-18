@@ -19,6 +19,7 @@ class LLMBrain:
         llm_output_conversion_template: Template,
         llm_model_name: str,
         ollama_num_ctx: int = 4096,
+        ollama_num_predict: int = None,
     ):
         self.llm_si_template = llm_si_template
         self.llm_output_conversion_template = llm_output_conversion_template
@@ -53,7 +54,7 @@ class LLMBrain:
         normalized_model_name = llm_model_name.split(":", 1)[1] if is_ollama_prefixed else llm_model_name
         self.llm_model_name = llm_model_name
         self.ollama_num_ctx = ollama_num_ctx
-        self._optimal_gpu_layers = None  # Cache for GPU layer calculation
+        self.ollama_num_predict = ollama_num_predict
         if "gemini" in llm_model_name:
             self.model_group = "gemini"
             genai.configure(api_key=os.environ["GEMINI_API_KEY"])
@@ -81,47 +82,6 @@ class LLMBrain:
             self.model_group = "openai"
             self.client = OpenAI()
 
-    def _calculate_optimal_gpu_layers(self):
-        """Calculate optimal num_gpu layers based on available VRAM.
-        For 2x RTX 3060 (12GB each = 24GB total), aim for 80% VRAM usage.
-        Returns the number of layers to offload to GPU."""
-        if self.model_group != "ollama":
-            return None
-        
-        try:
-            # Get available VRAM across all GPUs
-            result = subprocess.run(
-                ['nvidia-smi', '--query-gpu=memory.free', '--format=csv,noheader,nounits'],
-                capture_output=True, text=True, timeout=5
-            )
-            if result.returncode != 0:
-                print("[GPU MEMORY] nvidia-smi not available, using conservative estimate")
-                return 20  # Conservative default
-            
-            vram_values = [int(x.strip()) for x in result.stdout.strip().split('\n') if x.strip()]
-            total_vram_mb = sum(vram_values)
-            total_vram_gb = total_vram_mb / 1024
-            
-            # Strategy: Use 99% of available VRAM for model layers
-            usable_vram_gb = total_vram_gb * 0.99
-            
-            # Estimate bytes per layer
-            # For typical quantized models: ~400MB per layer
-            bytes_per_layer = 400 * 1024 * 1024  # 400MB per layer
-            
-            optimal_layers = max(5, int((usable_vram_gb * 1024 * 1024 * 1024) / bytes_per_layer))
-            
-            print(f"[GPU MEMORY] Total VRAM: {total_vram_gb:.1f}GB | "
-                  f"Usable (99%): {usable_vram_gb:.1f}GB | "
-                  f"Estimated GPU layers: {optimal_layers}")
-            
-            return optimal_layers
-            
-        except Exception as e:
-            print(f"[GPU MEMORY] Could not detect GPU VRAM: {e}")
-            print("[GPU MEMORY] Using conservative estimate: 10 layers")
-            return 10  # Conservative fallback
-
     def reset_llm_conversation(self):
         self.llm_conversation = []
 
@@ -142,36 +102,9 @@ class LLMBrain:
             return max(1, int(len(text.split()) * 1.3))
 
     def _ollama_prompt_guard(self, prompt_text: str, episode_reward_buffer, step_number, num_episodes):
-        if self.model_group != "ollama":
-            return
-
-        prompt_tokens = self._count_tokens_ollama(prompt_text)
-        print(f"[INPUT CONTEXT GUARD] Total input: {prompt_tokens} tokens / {self.ollama_num_ctx} context limit")
-        if prompt_tokens == 0 or prompt_tokens <= self.ollama_num_ctx:
-            return
-
-        tokens_per_line = 0
-        try:
-            buffer_text = str(episode_reward_buffer)
-            lines = [line for line in buffer_text.splitlines() if line.strip()]
-            if lines:
-                tokens_per_line = self._count_tokens_ollama(lines[-2])
-        except Exception:
-            tokens_per_line = 0
-
-        try:
-            remaining = max(0, int(num_episodes) - int(step_number))
-        except Exception:
-            remaining = 0
-
-        suggested_ctx = prompt_tokens + (remaining * tokens_per_line)
-        raise ValueError(
-            "Ollama prompt exceeds context window. "
-            f"Prompt tokens: {prompt_tokens}, "
-            f"ollama_num_ctx: {self.ollama_num_ctx}. "
-            f"Suggested ollama_num_ctx >= {suggested_ctx}. "
-            f"({remaining} iterations remaining × {tokens_per_line} tokens/param line)"
-        )
+        """Context guard disabled - no longer checking for exceeding context window."""
+        # Guard check disabled per user request
+        return
 
     def add_llm_conversation(self, text, role):
         if self.model_group in ["openai", "ollama"]:
@@ -196,21 +129,55 @@ class LLMBrain:
                     if reasoning:
                         response = f"<think>{reasoning}</think>\n{response}"
                 elif self.model_group == "ollama":
-                    # Calculate optimal GPU layers on first call, then cache
-                    if self._optimal_gpu_layers is None:
-                        self._optimal_gpu_layers = self._calculate_optimal_gpu_layers()
+                    # Stream tokens in real-time from Ollama
+                    content = ""
+                    full_thinking = ""
+                    thinking_started = False
+                    ollama_options = {"num_ctx": self.ollama_num_ctx, "num_gpu": -1}
+                    if self.ollama_num_predict is not None:
+                        ollama_options["num_predict"] = self.ollama_num_predict
                     
-                    result = ollama.chat(
+                    print("\n[OLLAMA STREAMING] ", end="", flush=True)
+                    
+                    # Use stream=True to get tokens as they're generated
+                    stream = ollama.chat(
                         model=self.ollama_model,
                         messages=self.llm_conversation,
-                        options={"num_ctx": self.ollama_num_ctx, "num_gpu": self._optimal_gpu_layers},
-                        
+                        options=ollama_options,
+                        stream=True
                     )
-                    message = result.get("message", {})
-                    content = message.get("content", "")
-                    reasoning = message.get("thinking")
-                    if reasoning:
-                        response = f"<think>{reasoning}</think>\n{content}"
+                    
+                    for chunk in stream:
+                        message = chunk.get("message", {})
+                        
+                        # Handle thinking tokens (if present)
+                        if "thinking" in message:
+                            thinking_token = message.get("thinking", "")
+                            if thinking_token:
+                                if not thinking_started:
+                                    print("<think>", end="", flush=True)
+                                    thinking_started = True
+                                full_thinking += thinking_token
+                                print(thinking_token, end="", flush=True)
+                        
+                        # Handle regular content tokens
+                        if "content" in message:
+                            token = message.get("content", "")
+                            if token:
+                                if thinking_started:
+                                    print("</think>", end="", flush=True)
+                                    thinking_started = False
+                                content += token
+                                print(token, end="", flush=True)
+                    
+                    # Close thinking tag if it's still open
+                    if thinking_started:
+                        print("</think>", end="", flush=True)
+                    
+                    print("\n")  # New line after streaming completes
+                    
+                    if full_thinking:
+                        response = f"<think>{full_thinking}</think>\n{content}"
                     else:
                         response = content
                 elif self.model_group == "anthropic":
@@ -264,19 +231,57 @@ class LLMBrain:
                         responses.append(content)
                 elif self.model_group == "ollama":
                     # Ollama doesn't support multiple responses natively,
-                    # so we generate them sequentially
+                    # so we generate them sequentially with streaming
                     responses = []
-                    for _ in range(num_responses):
-                        result = ollama.chat(
+                    ollama_options = {"num_ctx": self.ollama_num_ctx, "num_gpu": -1}
+                    if self.ollama_num_predict is not None:
+                        ollama_options["num_predict"] = self.ollama_num_predict
+                    for resp_idx in range(num_responses):
+                        content = ""
+                        full_thinking = ""
+                        thinking_started = False
+                        
+                        print(f"\n[OLLAMA RESPONSE {resp_idx + 1}/{num_responses}] ", end="", flush=True)
+                        
+                        # Stream this response
+                        stream = ollama.chat(
                             model=self.ollama_model,
                             messages=self.llm_conversation,
-                            options={"num_ctx": self.ollama_num_ctx, "num_gpu": 99},
+                            options=ollama_options,
+                            stream=True
                         )
-                        message = result.get("message", {})
-                        content = message.get("content", "")
-                        reasoning = message.get("reasoning")
-                        if reasoning:
-                            responses.append(f"<think>{reasoning}</think>\n{content}")
+                        
+                        for chunk in stream:
+                            message = chunk.get("message", {})
+                            
+                            # Handle thinking tokens (print in real-time)
+                            if "thinking" in message:
+                                thinking_token = message.get("thinking", "")
+                                if thinking_token:
+                                    if not thinking_started:
+                                        print("<think>", end="", flush=True)
+                                        thinking_started = True
+                                    full_thinking += thinking_token
+                                    print(thinking_token, end="", flush=True)
+                            
+                            # Handle regular content tokens
+                            if "content" in message:
+                                token = message.get("content", "")
+                                if token:
+                                    if thinking_started:
+                                        print("</think>", end="", flush=True)
+                                        thinking_started = False
+                                    content += token
+                                    print(token, end="", flush=True)
+                        
+                        # Close thinking tag if it's still open
+                        if thinking_started:
+                            print("</think>", end="", flush=True)
+                        
+                        print("\n")  # New line after each response
+                        
+                        if full_thinking:
+                            responses.append(f"<think>{full_thinking}</think>\n{content}")
                         else:
                             responses.append(content)
                 else:
@@ -683,10 +688,9 @@ class LLMBrain:
                 # Add system message first (high-priority instructions)
                 self.add_llm_conversation(system_part, "system")
                 
-                # Guard check on combined tokens (system + user) for Ollama
+                # Count tokens for logging (guard check disabled)
                 combined_prompt = system_part + "\n\n" + user_part
                 context_size = self._count_tokens_ollama(combined_prompt)
-                self._ollama_prompt_guard(combined_prompt, episode_reward_buffer, step_number, num_episodes)
                 
                 # Add user message (dynamic data: examples, iteration, warnings)
                 self.add_llm_conversation(user_part, "user")
@@ -696,7 +700,6 @@ class LLMBrain:
             else:
                 # Fallback if split fails
                 context_size = self._count_tokens_ollama(full_prompt)
-                self._ollama_prompt_guard(full_prompt, episode_reward_buffer, step_number, num_episodes)
                 self.add_llm_conversation(full_prompt, "user")
                 system_prompt = full_prompt
         else:
@@ -742,6 +745,7 @@ class LLMBrain:
         attempt_idx=0,
         human_feedback="",
         last_policy_params="",
+        request_feedback_prediction=False,
     ):
         """
         Update policy parameters with human feedback from the loop.
@@ -765,6 +769,7 @@ class LLMBrain:
                 "attempt_idx": attempt_idx,
                 "human_feedback": human_feedback,
                 "last_policy_params": last_policy_params,
+                "request_feedback_prediction": request_feedback_prediction,
             }
         )
         
@@ -784,10 +789,9 @@ class LLMBrain:
                 # Add system message first (high-priority instructions)
                 self.add_llm_conversation(system_part, "system")
                 
-                # Guard check on combined tokens (system + user) for Ollama
+                # Count tokens for logging (guard check disabled)
                 combined_prompt = system_part + "\n\n" + user_part
                 context_size = self._count_tokens_ollama(combined_prompt)
-                self._ollama_prompt_guard(combined_prompt, episode_reward_buffer, step_number, num_episodes)
                 
                 # Add user message (dynamic data: examples, iteration, warnings, feedback)
                 self.add_llm_conversation(user_part, "user")
@@ -797,7 +801,6 @@ class LLMBrain:
             else:
                 # Fallback if split fails
                 context_size = self._count_tokens_ollama(full_prompt)
-                self._ollama_prompt_guard(full_prompt, episode_reward_buffer, step_number, num_episodes)
                 self.add_llm_conversation(full_prompt, "user")
                 system_prompt = full_prompt
         else:
