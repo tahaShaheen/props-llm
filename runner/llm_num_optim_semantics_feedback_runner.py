@@ -590,6 +590,7 @@ def run_training_loop(
             os.makedirs(curr_episode_dir, exist_ok=True)
         
         training_succeeded = False
+        last_failure_reason = ""
         for trial_idx in range(10):
             try:
                 # Train with feedback from previous iteration
@@ -598,6 +599,7 @@ def run_training_loop(
                     world, 
                     curr_episode_dir, 
                     attempt_idx=trial_idx,
+                    attempt_failure_reason=last_failure_reason,
                     human_feedback=current_feedback,
                     last_policy_params=last_policy_params,
                     request_feedback_prediction=request_feedback_prediction,
@@ -692,6 +694,7 @@ def run_training_loop(
             except Exception as e:
                 if isinstance(e, KeyError):
                     print(red(f"{trial_idx + 1}th trial attempt failed: INVALID ACTION"))
+                    last_failure_reason = "Invalid action proposed. Output only valid action values in the required params format."
                 else:
                     print(
                         red(
@@ -700,6 +703,13 @@ def run_training_loop(
                     )
                     print(red(f"Error type: {type(e).__name__}"))
                     traceback.print_exc()
+                    failure_text = str(e).strip().replace("\n", " ")
+                    if len(failure_text) > 300:
+                        failure_text = failure_text[:300] + "..."
+                    last_failure_reason = (
+                        f"{type(e).__name__}: {failure_text}. "
+                        "Fix this exact issue and do not repeat the same mistake."
+                    )
                 continue
         
         if not training_succeeded:
@@ -866,7 +876,7 @@ class LLMNumOptimSemanticAgentWithFeedback(LLMNumOptimSemanticAgent):
                 return self.get_predicted_feedback_for_episode(episode)
         return ""
     
-    def train_policy_with_feedback(self, world, logdir, attempt_idx=0, human_feedback="", last_policy_params="", request_feedback_prediction=False):
+    def train_policy_with_feedback(self, world, logdir, attempt_idx=0, attempt_failure_reason="", human_feedback="", last_policy_params="", request_feedback_prediction=False):
         """Train policy with human feedback from previous iteration."""
 
         def canonicalize_params(params):
@@ -1077,6 +1087,7 @@ class LLMNumOptimSemanticAgentWithFeedback(LLMNumOptimSemanticAgent):
             search_step_size=self.search_step_size,
             num_evaluation_episodes=self.num_evaluation_episodes,
             attempt_idx=attempt_idx,
+            attempt_failure_reason=attempt_failure_reason,
             human_feedback=human_feedback,
             last_policy_params=last_policy_params,
             request_feedback_prediction=request_feedback_prediction,
@@ -1178,7 +1189,7 @@ class LLMNumOptimQTableSemanticsAgentWithFeedback(LLMNumOptimQTableSemanticsAgen
         """Retrieve feedback for an episode, or empty string if not available."""
         return self.feedback_buffer.get(episode, "")
     
-    def train_policy_with_feedback(self, world, logdir, attempt_idx=0, human_feedback="", last_policy_params="", request_feedback_prediction=False):
+    def train_policy_with_feedback(self, world, logdir, attempt_idx=0, attempt_failure_reason="", human_feedback="", last_policy_params="", request_feedback_prediction=False):
         """Train Q-table policy with human feedback from previous iteration."""
         
         def parse_parameters(input_text):
@@ -1294,6 +1305,7 @@ class LLMNumOptimQTableSemanticsAgentWithFeedback(LLMNumOptimQTableSemanticsAgen
             actions=self.actions,
             num_evaluation_episodes=self.num_evaluation_episodes,
             attempt_idx=attempt_idx,
+            attempt_failure_reason=attempt_failure_reason,
             human_feedback=human_feedback,
             last_policy_params=last_policy_params,
             request_feedback_prediction=request_feedback_prediction,

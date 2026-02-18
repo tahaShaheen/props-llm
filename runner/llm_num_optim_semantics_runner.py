@@ -171,10 +171,14 @@ def run_training_loop(
             os.makedirs(curr_episode_dir, exist_ok=True)
         
         training_succeeded = False
+        last_failure_reason = ""
         for trial_idx in range(10):
             try:
                 cpu_time, api_time, total_episodes, total_steps, total_reward, parameters, context_size, num_attempts = agent.train_policy(
-                    world, curr_episode_dir, attempt_idx=trial_idx
+                    world,
+                    curr_episode_dir,
+                    attempt_idx=trial_idx,
+                    attempt_failure_reason=last_failure_reason,
                 )
                 formatted_parameters = format_parameters_for_csv(parameters)
                 overall_log_file.write(
@@ -189,6 +193,7 @@ def run_training_loop(
             except Exception as e:
                 if isinstance(e, KeyError):
                     print(red(f"{trial_idx + 1}th trial attempt failed: INVALID ACTION"))
+                    last_failure_reason = "Invalid action proposed. Output only valid action values in the required params format."
                 else:
                     print(
                         red(
@@ -196,6 +201,13 @@ def run_training_loop(
                         )
                     )
                     print(red(f"Error type: {type(e).__name__}"))
+                    failure_text = str(e).strip().replace("\n", " ")
+                    if len(failure_text) > 300:
+                        failure_text = failure_text[:300] + "..."
+                    last_failure_reason = (
+                        f"{type(e).__name__}: {failure_text}. "
+                        "Fix this exact issue and do not repeat the same mistake."
+                    )
                 continue
         if not training_succeeded:
             print(f"Episode {episode} failed to train after 10 attempts")

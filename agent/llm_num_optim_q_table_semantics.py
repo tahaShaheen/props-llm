@@ -96,7 +96,7 @@ class LLMNumOptimQTableSemanticsAgent:
             logging_file.close()
             print(yellow(f"Result: {result}"))
 
-    def train_policy(self, world: BaseWorld, logdir, attempt_idx=0):
+    def train_policy(self, world: BaseWorld, logdir, attempt_idx=0, attempt_failure_reason=""):
 
         def parse_parameters(input_text):
             # Remove <think>...</think> tags first
@@ -175,6 +175,7 @@ class LLMNumOptimQTableSemanticsAgent:
                 num_evaluation_episodes=self.num_evaluation_episodes,
                 actions=self.actions,
                 attempt_idx=attempt_idx,
+                attempt_failure_reason=attempt_failure_reason,
             )
             self.api_call_time += api_time
         except Exception as e:

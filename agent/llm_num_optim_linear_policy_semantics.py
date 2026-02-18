@@ -116,7 +116,7 @@ class LLMNumOptimSemanticAgent:
             print(yellow(f"Result: {result}"))
         # self.replay_buffer.sort()
 
-    def train_policy(self, world: BaseWorld, logdir, attempt_idx=0):
+    def train_policy(self, world: BaseWorld, logdir, attempt_idx=0, attempt_failure_reason=""):
 
         def parse_parameters(input_text):
             # Clean up the input text - remove common formatting artifacts
@@ -243,6 +243,7 @@ class LLMNumOptimSemanticAgent:
             search_step_size=self.search_step_size,
             num_evaluation_episodes=self.num_evaluation_episodes,
             attempt_idx=attempt_idx,
+            attempt_failure_reason=attempt_failure_reason,
         )
         self.api_call_time += api_time
 

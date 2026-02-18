@@ -654,6 +654,7 @@ class LLMBrain:
         actions=None,
         num_evaluation_episodes=20,
         attempt_idx=0,
+        attempt_failure_reason="",
     ):
         self.reset_llm_conversation()
 
@@ -669,6 +670,7 @@ class LLMBrain:
                 "actions": actions,
                 "num_evaluation_episodes": num_evaluation_episodes,
                 "attempt_idx": attempt_idx,
+                "attempt_failure_reason": attempt_failure_reason,
             }
         )
         
@@ -746,6 +748,7 @@ class LLMBrain:
         human_feedback="",
         last_policy_params="",
         request_feedback_prediction=False,
+        attempt_failure_reason="",
     ):
         """
         Update policy parameters with human feedback from the loop.
@@ -770,6 +773,7 @@ class LLMBrain:
                 "human_feedback": human_feedback,
                 "last_policy_params": last_policy_params,
                 "request_feedback_prediction": request_feedback_prediction,
+                "attempt_failure_reason": attempt_failure_reason,
             }
         )
         
