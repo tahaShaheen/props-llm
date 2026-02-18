@@ -34,6 +34,7 @@ def run_training_loop(
     search_step_size=0.1,
     env_kwargs=None,
     ollama_num_ctx=4096,
+    ollama_num_predict=None,
 ):
     assert task in ["cont_space_llm_num_optim", "cont_space_llm_num_optim_rndm_proj", "dist_state_llm_num_optim"]
 
@@ -77,6 +78,7 @@ def run_training_loop(
                 optimum,
                 search_step_size,
                 ollama_num_ctx=ollama_num_ctx,
+                ollama_num_predict=ollama_num_predict,
             )
         elif task == "cont_space_llm_num_optim_rndm_proj":
             agent = LLMNumOptimRndmPrjAgent(
@@ -93,6 +95,7 @@ def run_training_loop(
                 bias,
                 optimum,
                 ollama_num_ctx=ollama_num_ctx,
+                ollama_num_predict=ollama_num_predict,
             )
 
 
@@ -117,6 +120,7 @@ def run_training_loop(
             optimum,
             env_kwargs=env_kwargs,
             ollama_num_ctx=ollama_num_ctx,
+            ollama_num_predict=ollama_num_predict,
         )
 
         print('init done')
