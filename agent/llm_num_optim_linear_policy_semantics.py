@@ -28,6 +28,7 @@ class LLMNumOptimSemanticAgent:
         env_desc_file=None,
         num_episodes=400,
         ollama_num_ctx=4096,
+        ollama_num_predict=None,
         include_trajectories=True,
     ):
         self.start_time = time.process_time()
@@ -62,6 +63,7 @@ class LLMNumOptimSemanticAgent:
             llm_output_conversion_template,
             llm_model_name,
             ollama_num_ctx=ollama_num_ctx,
+            ollama_num_predict=ollama_num_predict,
         )
         self.logdir = logdir
         self.num_evaluation_episodes = num_evaluation_episodes

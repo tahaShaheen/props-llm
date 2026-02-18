@@ -25,6 +25,7 @@ class LLMNumOptimRndmPrjAgent:
         bias,
         optimum,
         ollama_num_ctx=4096,
+        ollama_num_predict=None,
     ):
         self.start_time = time.process_time()
         self.api_call_time = 0
@@ -54,6 +55,7 @@ class LLMNumOptimRndmPrjAgent:
             llm_output_conversion_template,
             llm_model_name,
             ollama_num_ctx=ollama_num_ctx,
+            ollama_num_predict=ollama_num_predict,
         )
         self.logdir = logdir
         self.num_evaluation_episodes = num_evaluation_episodes
