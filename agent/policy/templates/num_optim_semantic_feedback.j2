@@ -1,9 +1,9 @@
 {{ episode_reward_buffer_string }}
 
-You are a good global RL policy optimizer. Use the observed reward outcomes and human feedback history (if provided) to help me find the global optimal policy in the following environment:
+You are a good global Reinforcement Learning policy optimizer. Use the observed reward outcomes and human feedback history (if provided) to help me find the global optimal policy in the following environment:
 
 # Environment:
-{% include env_description %}
+{{ env_description }}
 
 The list above is all YOUR previous params attempts from the buffer. Each params set contains:
 - the actual episodic reward f(params)
@@ -11,8 +11,8 @@ The list above is all YOUR previous params attempts from the buffer. Each params
 - the feedback YOU predicted (if collected).
 
 You have two objectives at the same time:
-1) Optimize the policy to increase actual reward.
-2) Optimize the policy using the actual human feedback.
+1) Optimize the policy to increase actual reward. Explore aggressively and do not get stuck in local optima. The global optimal reward should be around {{ optimum }}. If the last few params you proposed are all below that, this is just a local optimum. You should explore instead of exploiting. Search the entire space of the policy parameters.
+2) Learn to predict the episodic reward. If most of your recent predictions are incorrect, you are doing a bad job.
 
 # Regarding the policy parameters **params**:
 **params** is an array of {{ rank }} float numbers.
@@ -25,34 +25,34 @@ f(params) is the episodic reward of the policy.
 {{ last_policy_params }}
 {% endif %}
 {% if human_feedback %}
-A human observer watched this policy execute and provided this feedback:
+This policy produced the highest reward in the last window. A human observer watched this policy execute and provided this feedback:
 "{{ human_feedback }}"
 
 **Consider this feedback carefully when proposing your next params.**
 {% endif %}
 
+{% if predict_feedback_only %}
+You are predicting human feedback for an RL rollout GIF.
+
+From the last window of size {{ feedback_interval }}, episode {{ interval_best_episode }} had the best reward: {{ interval_best_reward }}.
+These are the exact params that produced that best reward:
+{{ interval_best_params }}
+
+Predict what a human observer is likely to say after watching that rollout.
+Output exactly one line in this format:
+predicted_feedback: <your prediction>
+{% else %}
 # Here's how we'll interact:
 1. I will first provide MAX_ITERATIONS ({{ num_episodes }}) along with a few training examples.
-{% if request_feedback_prediction %}
 2. You will provide your response in the following exact 3-line format ONLY:
     * 'explanation: E'
     * 'params[0]: X, params[1]: Y, params[2]: Z,..., params[{{ rank - 1 }}]: W'
-    * 'predicted_feedback: F'
+    * 'predicted_reward: R'
     Where:
-    - E is a short explanation of which params you are changing and why.
-    - F is your forecast of what the human will likely say after observing the params you propose.
-    It is NOT the current human feedback text and should not just copy `HUMAN FEEDBACK`.
+    - E is an explanation that details the reason for changing each of the params you are proposing.
+    - R is your predicted episodic reward for the params you propose.
     - params values are in the range of [-6.0, 6.0], with 1 decimal place.
     OUTPUT ONLY THESE 3 LINES, NOTHING ELSE.
-{% else %}
-2. You will provide your response in the following exact 2-line format ONLY:
-    * 'explanation: E'
-    * 'params[0]: X, params[1]: Y, params[2]: Z,..., params[{{ rank - 1 }}]: W'
-    Where:
-    - E is a short explanation of which params you are changing and why.
-    - params values are in the range of [-6.0, 6.0], with 1 decimal place.
-    OUTPUT ONLY THESE 2 LINES, NOTHING ELSE.
-{% endif %}
 3. I will then provide the policy's obtained reward f(params) averaged over {{ num_evaluation_episodes }} episodes, given the last iteration's params.
 4. A human observer will watch the policy execute and may provide feedback on the behavior.
 5. We will repeat steps 2-4 until we reach the maximum number of iterations.
@@ -61,33 +61,20 @@ A human observer watched this policy execute and provided this feedback:
 1. **Do not propose previously seen params.**
 2. **The global optimal reward should be around {{ optimum }}.** If you are below that, this is just a local optimum. You should explore instead of exploiting.
 3. Search both positive and negative values. **During exploration, use search step size of +-{{ step_size }}**.
-{% if request_feedback_prediction %}
-4. Your predicted_feedback should be your best honest forecast for the params you propose, based on the history above.
-5. Treat `predicted_feedback` as a prediction target: try to make it match future `HUMAN FEEDBACK` better over time.
-{% endif %}
 
 Now you are at iteration {{step_number}} out of {{ num_episodes }}. 
-{% if request_feedback_prediction %}
 CRITICAL: Output exactly these 3 lines and nothing else:
 1) explanation: E
 2) params[0]: X, params[1]: Y, params[2]: Z,..., params[{{ rank - 1 }}]: W
-3) predicted_feedback: F
-{% else %}
-CRITICAL: Output exactly these 2 lines and nothing else:
-1) explanation: E
-2) params[0]: X, params[1]: Y, params[2]: Z,..., params[{{ rank - 1 }}]: W
-{% endif %}
+3) predicted_reward: R
 
 You WILL be stopped if you spend too much time thinking. BE FAST!
 
 {% if attempt_idx > 0 %}
-{% if request_feedback_prediction %}
-WARNING: Attempt {{attempt_idx + 1}}/10. FAILED {{attempt_idx}} times. {{10 - attempt_idx - 1}} remaining. OUTPUT MUST BE EXACTLY 4 LINES: explanation: E / params[0]: X, ..., params[{{ rank - 1 }}]: Z / predicted_feedback: F
-{% else %}
-WARNING: Attempt {{attempt_idx + 1}}/10. FAILED {{attempt_idx}} times. {{10 - attempt_idx - 1}} remaining. OUTPUT MUST BE EXACTLY 3 LINES: explanation: E / params[0]: X, ..., params[{{ rank - 1 }}]: Z 
-{% endif %}
+WARNING: Attempt {{attempt_idx + 1}}/10. FAILED {{attempt_idx}} times. {{10 - attempt_idx - 1}} remaining. OUTPUT MUST BE EXACTLY 3 LINES: explanation: E / params[0]: X, ..., params[{{ rank - 1 }}]: Z / predicted_reward: R
 {% if attempt_failure_reason %}
 PREVIOUS FAILURE: {{ attempt_failure_reason }}
 DO NOT repeat this exact mistake.
+{% endif %}
 {% endif %}
 {% endif %}
