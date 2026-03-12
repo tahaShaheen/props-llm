@@ -26,6 +26,7 @@ import ast
 import subprocess
 import sys
 import csv
+import re
 
 
 def build_feedback_history(overall_log_path: str, max_rows: int = 20) -> str:
@@ -228,6 +229,86 @@ def update_overall_log_feedback_for_episode(overall_log_path: str, target_episod
         )
         writer.writeheader()
         writer.writerows(rows)
+
+
+def update_overall_log_guessed_feedback_for_episode(overall_log_path: str, target_episode: int, guessed_feedback: str):
+    """Update Guessed Feedback column for a specific episode row in overall_log.csv."""
+    if not os.path.exists(overall_log_path):
+        return
+
+    with open(overall_log_path, "r", newline="") as f:
+        reader = csv.DictReader(f, skipinitialspace=True)
+        fieldnames = reader.fieldnames
+        rows = list(reader)
+
+    if not fieldnames or "Guessed Feedback" not in fieldnames:
+        return
+
+    updated = False
+    for row in rows:
+        try:
+            episode_value = int(str(row.get("Iteration", "")).strip())
+        except Exception:
+            continue
+        if episode_value == target_episode:
+            row["Guessed Feedback"] = guessed_feedback
+            updated = True
+            break
+
+    if not updated:
+        return
+
+    with open(overall_log_path, "w", newline="") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=fieldnames,
+            quoting=csv.QUOTE_NONNUMERIC,
+        )
+        writer.writeheader()
+        writer.writerows(rows)
+
+
+def predict_feedback_for_best_window_params(
+    agent,
+    interval_best_episode: int,
+    interval_best_reward: float,
+    interval_best_params: str,
+    feedback_interval: int,
+    env_description_text: str = "",
+) -> str:
+    """Ask the training LLM to predict human feedback for the exact best params in the just-finished window."""
+    try:
+        agent.llm_brain.reset_llm_conversation()
+        prompt = agent.llm_brain.llm_si_template.render(
+            {
+                "predict_feedback_only": True,
+                "feedback_interval": feedback_interval,
+                "interval_best_episode": interval_best_episode,
+                "interval_best_reward": f"{interval_best_reward:.2f}",
+                "interval_best_params": interval_best_params,
+                "env_description": env_description_text,
+            }
+        )
+        agent.llm_brain.add_llm_conversation(prompt, "user")
+        response = agent.llm_brain.query_llm()
+        cleaned = (response or "").strip().replace("`", "")
+        cleaned = re.sub(r"<think>.*?</think>", "", cleaned, flags=re.DOTALL | re.IGNORECASE)
+
+        match = re.search(
+            r"^\s*predicted_feedback\s*:\s*(.+?)\s*$",
+            cleaned,
+            flags=re.IGNORECASE | re.MULTILINE,
+        )
+        if match:
+            return match.group(1).strip().strip('"').strip()
+
+        lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+        if not lines:
+            return ""
+        return lines[-1].strip().strip('"').strip()
+    except Exception as e:
+        print(red(f"Failed to predict feedback for best-window params: {e}"))
+        return ""
 
 
 def restore_agent_state_from_overall_log(agent, overall_log_path: str) -> int:
@@ -594,7 +675,6 @@ def run_training_loop(
         for trial_idx in range(10):
             try:
                 # Train with feedback from previous iteration
-                request_feedback_prediction = ((episode + 1) % feedback_interval == 0)
                 cpu_time, api_time, total_episodes, total_steps, total_reward, parameters, context_size, num_attempts = agent.train_policy_with_feedback(
                     world, 
                     curr_episode_dir, 
@@ -602,15 +682,11 @@ def run_training_loop(
                     attempt_failure_reason=last_failure_reason,
                     human_feedback=current_feedback,
                     last_policy_params=last_policy_params,
-                    request_feedback_prediction=request_feedback_prediction,
+                    env_description_text=env_description_text,
                 )
 
                 guessed_reward = getattr(agent, "last_predicted_reward", None)
-                guessed_feedback = (
-                    (getattr(agent, "last_predicted_feedback", "") or "")
-                    if request_feedback_prediction
-                    else ""
-                )
+                guessed_feedback = ""
                 guessed_explanation = getattr(agent, "last_explanation", "") or ""
                 if hasattr(agent, "store_predicted_outcomes"):
                     agent.store_predicted_outcomes(episode, guessed_reward, guessed_feedback)
@@ -662,11 +738,6 @@ def run_training_loop(
                 guessed_reward_file_path = f"{curr_episode_dir}/guessed_reward.txt"
                 with open(guessed_reward_file_path, "w") as f:
                     f.write("" if guessed_reward is None else str(guessed_reward))
-
-                if request_feedback_prediction:
-                    guessed_feedback_file_path = f"{curr_episode_dir}/guessed_feedback.txt"
-                    with open(guessed_feedback_file_path, "w") as f:
-                        f.write(guessed_feedback)
 
                 guessed_explanation_file_path = f"{curr_episode_dir}/guessed_explanation.txt"
                 with open(guessed_explanation_file_path, "w") as f:
@@ -723,6 +794,44 @@ def run_training_loop(
             print(blue(f"FEEDBACK INTERVAL COMPLETE (Episodes {episode + 1 - feedback_interval} to {episode})"))
             print(blue(f"Best params from this interval: Episode {interval_best_episode} with reward {interval_best_reward:.2f}"))
             print(f"{'='*80}")
+
+            predicted_feedback_for_best_ep = ""
+            if interval_best_episode is not None and interval_best_episode in episode_params_map:
+                predicted_feedback_for_best_ep = predict_feedback_for_best_window_params(
+                    agent=agent,
+                    interval_best_episode=interval_best_episode,
+                    interval_best_reward=interval_best_reward,
+                    interval_best_params=episode_params_map[interval_best_episode],
+                    feedback_interval=feedback_interval,
+                    env_description_text=env_description_text,
+                )
+
+                if hasattr(agent, "get_predicted_reward_for_episode"):
+                    guessed_reward_for_best_ep = agent.get_predicted_reward_for_episode(interval_best_episode)
+                else:
+                    guessed_reward_for_best_ep = None
+
+                if hasattr(agent, "store_predicted_outcomes"):
+                    agent.store_predicted_outcomes(
+                        interval_best_episode,
+                        guessed_reward_for_best_ep,
+                        predicted_feedback_for_best_ep,
+                    )
+
+                # IMPORTANT: close append handle before in-place rewrite to avoid file corruption.
+                overall_log_file.flush()
+                overall_log_file.close()
+                update_overall_log_guessed_feedback_for_episode(
+                    overall_log_path,
+                    interval_best_episode,
+                    predicted_feedback_for_best_ep,
+                )
+                overall_log_file = open(overall_log_path, "a", newline="")
+                overall_log_writer = csv.DictWriter(
+                    overall_log_file,
+                    fieldnames=overall_fieldnames,
+                    quoting=csv.QUOTE_NONNUMERIC,
+                )
             
             current_feedback = get_human_feedback(
                 episode=interval_best_episode,
@@ -876,7 +985,7 @@ class LLMNumOptimSemanticAgentWithFeedback(LLMNumOptimSemanticAgent):
                 return self.get_predicted_feedback_for_episode(episode)
         return ""
     
-    def train_policy_with_feedback(self, world, logdir, attempt_idx=0, attempt_failure_reason="", human_feedback="", last_policy_params="", request_feedback_prediction=False):
+    def train_policy_with_feedback(self, world, logdir, attempt_idx=0, attempt_failure_reason="", human_feedback="", last_policy_params="", env_description_text=""):
         """Train policy with human feedback from previous iteration."""
 
         def canonicalize_params(params):
@@ -1076,6 +1185,7 @@ class LLMNumOptimSemanticAgentWithFeedback(LLMNumOptimSemanticAgent):
             parse_parameters,
             self.training_episodes,
             self.env_desc_file,
+            env_description_text=env_description_text,
             num_episodes=self.num_episodes,
             rank=self.rank,
             optimum=self.optimum,
@@ -1085,7 +1195,6 @@ class LLMNumOptimSemanticAgentWithFeedback(LLMNumOptimSemanticAgent):
             attempt_failure_reason=attempt_failure_reason,
             human_feedback=human_feedback,
             last_policy_params=last_policy_params,
-            request_feedback_prediction=request_feedback_prediction,
         )
         self.api_call_time += api_time
 
@@ -1184,7 +1293,7 @@ class LLMNumOptimQTableSemanticsAgentWithFeedback(LLMNumOptimQTableSemanticsAgen
         """Retrieve feedback for an episode, or empty string if not available."""
         return self.feedback_buffer.get(episode, "")
     
-    def train_policy_with_feedback(self, world, logdir, attempt_idx=0, attempt_failure_reason="", human_feedback="", last_policy_params="", request_feedback_prediction=False):
+    def train_policy_with_feedback(self, world, logdir, attempt_idx=0, attempt_failure_reason="", human_feedback="", last_policy_params="", env_description_text=""):
         """Train Q-table policy with human feedback from previous iteration."""
         
         def parse_parameters(input_text):
@@ -1294,6 +1403,7 @@ class LLMNumOptimQTableSemanticsAgentWithFeedback(LLMNumOptimQTableSemanticsAgen
             parse_parameters,
             self.training_episodes,
             self.env_desc_file,
+            env_description_text=env_description_text,
             num_episodes=self.num_episodes,
             rank=self.rank,
             optimum=self.optimum,
@@ -1303,7 +1413,6 @@ class LLMNumOptimQTableSemanticsAgentWithFeedback(LLMNumOptimQTableSemanticsAgen
             attempt_failure_reason=attempt_failure_reason,
             human_feedback=human_feedback,
             last_policy_params=last_policy_params,
-            request_feedback_prediction=request_feedback_prediction,
         )
         self.api_call_time += api_time
 
