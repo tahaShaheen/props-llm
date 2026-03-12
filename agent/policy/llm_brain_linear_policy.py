@@ -738,6 +738,7 @@ class LLMBrain:
         parse_parameters,
         step_number,
         env_desc_file,
+        env_description_text="",
         num_episodes=400,
         rank=None,
         optimum=None,
@@ -761,7 +762,7 @@ class LLMBrain:
         full_prompt = self.llm_si_template.render(
             {
                 "episode_reward_buffer_string": str(episode_reward_buffer),
-                "env_description": env_desc_file,
+                "env_description": env_description_text or env_desc_file,
                 "step_number": str(step_number),
                 "num_episodes": num_episodes,
                 "rank": rank,
