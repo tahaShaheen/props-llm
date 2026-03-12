@@ -230,104 +230,6 @@ def update_overall_log_feedback_for_episode(overall_log_path: str, target_episod
         writer.writerows(rows)
 
 
-def restore_agent_state_from_overall_log(agent, overall_log_path: str) -> int:
-    """Restore replay buffer and feedback/prediction state from overall_log.csv.
-
-    Returns number of restored rows.
-    """
-    if not os.path.exists(overall_log_path):
-        return 0
-
-    try:
-        with open(overall_log_path, "r", newline="") as f:
-            reader = csv.DictReader(f, skipinitialspace=True)
-            rows = list(reader)
-    except Exception as e:
-        print(red(f"Failed reading {overall_log_path} for replay restore: {e}"))
-        return 0
-
-    def parse_float(value):
-        if value is None:
-            return None
-        s = str(value).strip()
-        if not s:
-            return None
-        try:
-            return float(s)
-        except Exception:
-            return None
-
-    def parse_params_vector(value):
-        import re
-
-        if value is None:
-            return None
-        text = str(value).strip()
-        if not text:
-            return None
-
-        try:
-            parsed = ast.literal_eval(text)
-            arr = np.array(parsed, dtype=float).reshape(-1)
-            if arr.size > 0:
-                return arr
-        except Exception:
-            pass
-
-        nums = re.findall(r"[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?", text)
-        if not nums:
-            return None
-        return np.array([float(x) for x in nums], dtype=float).reshape(-1)
-
-    records = []
-    for row in rows:
-        try:
-            episode = int(str(row.get("Iteration", "")).strip())
-        except Exception:
-            continue
-
-        reward = parse_float(row.get("Total Reward", ""))
-        params = parse_params_vector(row.get("Parameters", ""))
-        if reward is None or params is None:
-            continue
-
-        guessed_reward = parse_float(row.get("Guessed Reward", ""))
-        guessed_feedback = str(row.get("Guessed Feedback", "") or "").strip()
-        human_feedback = str(row.get("Human Feedback", "") or "").strip()
-
-        records.append((episode, params, reward, human_feedback, guessed_reward, guessed_feedback))
-
-    records.sort(key=lambda item: item[0])
-
-    if hasattr(agent, "replay_buffer") and hasattr(agent.replay_buffer, "buffer"):
-        agent.replay_buffer.buffer.clear()
-
-    if hasattr(agent, "feedback_buffer"):
-        agent.feedback_buffer = {}
-    if hasattr(agent, "predicted_reward_buffer"):
-        agent.predicted_reward_buffer = {}
-    if hasattr(agent, "predicted_feedback_buffer"):
-        agent.predicted_feedback_buffer = {}
-    if hasattr(agent, "episode_numbers"):
-        agent.episode_numbers = []
-
-    restored = 0
-    for episode, params, reward, human_feedback, guessed_reward, guessed_feedback in records:
-        agent.replay_buffer.add(params, reward)
-        buffer_idx = len(agent.replay_buffer.buffer) - 1
-
-        if hasattr(agent, "store_episode_number"):
-            agent.store_episode_number(buffer_idx, episode)
-        if human_feedback and hasattr(agent, "store_feedback"):
-            agent.store_feedback(episode, human_feedback)
-        if hasattr(agent, "store_predicted_outcomes"):
-            agent.store_predicted_outcomes(episode, guessed_reward, guessed_feedback)
-
-        restored += 1
-
-    return restored
-
-
 def run_training_loop(
     task,
     num_episodes,
@@ -487,39 +389,12 @@ def run_training_loop(
 
     overall_log_path = f"{logdir}/overall_log.csv"
     feedback_log_path = f"{logdir}/feedback_log.csv"
-    start_episode = 0
-    logged_episodes = set()
-    has_existing_log = False
-    
-    if os.path.exists(overall_log_path):
-        try:
-            with open(overall_log_path, "r") as log_file:
-                lines = [line.strip() for line in log_file.readlines() if line.strip()]
-            if len(lines) > 1:
-                has_existing_log = True
-                for row in lines[1:]:
-                    try:
-                        logged_episodes.add(int(row.split(",", 1)[0]))
-                    except ValueError:
-                        continue
-                if logged_episodes:
-                    start_episode = max(logged_episodes) + 1
-                print(green(f"Resuming overall_log.csv from episode {start_episode}"))
-        except Exception as e:
-            print(red(f"Failed to parse existing overall_log.csv, starting from 0: {e}"))
-            start_episode = 0
-
-    if start_episode > 0:
-        restored_count = restore_agent_state_from_overall_log(agent, overall_log_path)
-        agent.training_episodes = start_episode
-        print(green(f"Restored replay state from overall_log.csv ({restored_count} entries)"))
+    if not warmup_dir:
+        warmup_dir = f"{logdir}/warmup"
+        os.makedirs(warmup_dir, exist_ok=True)
+        agent.random_warmup(world, warmup_dir, warmup_episodes)
     else:
-        if not warmup_dir:
-            warmup_dir = f"{logdir}/warmup"
-            os.makedirs(warmup_dir, exist_ok=True)
-            agent.random_warmup(world, warmup_dir, warmup_episodes)
-        else:
-            agent.replay_buffer.load(warmup_dir)
+        agent.replay_buffer.load(warmup_dir)
 
     overall_fieldnames = [
         "Iteration",
@@ -536,15 +411,14 @@ def run_training_loop(
         "Explanation",
         "Parameters",
     ]
-    overall_log_file = open(overall_log_path, "a" if start_episode > 0 else "w", newline="")
+    overall_log_file = open(overall_log_path, "w", newline="")
     overall_log_writer = csv.DictWriter(
         overall_log_file,
         fieldnames=overall_fieldnames,
         quoting=csv.QUOTE_NONNUMERIC,
     )
-    if start_episode == 0:
-        overall_log_writer.writeheader()
-        overall_log_file.flush()
+    overall_log_writer.writeheader()
+    overall_log_file.flush()
 
     # Initialize feedback log
     feedback_fieldnames = [
@@ -554,15 +428,14 @@ def run_training_loop(
         "Actual Feedback",
         "Guessed Feedback",
     ]
-    feedback_log_file = open(feedback_log_path, "a" if start_episode > 0 else "w", newline="")
+    feedback_log_file = open(feedback_log_path, "w", newline="")
     feedback_log_writer = csv.DictWriter(
         feedback_log_file,
         fieldnames=feedback_fieldnames,
         quoting=csv.QUOTE_NONNUMERIC,
     )
-    if start_episode == 0:
-        feedback_log_writer.writeheader()
-        feedback_log_file.flush()
+    feedback_log_writer.writeheader()
+    feedback_log_file.flush()
 
     # Track feedback for intervals
     interval_best_episode = None
@@ -573,21 +446,15 @@ def run_training_loop(
     last_policy_params = ""
     episode_params_map = {}
     
-    for episode in range(start_episode, num_episodes):
-        if episode in logged_episodes:
-            print(green(f"Skipping already logged episode {episode}"))
-            continue
+    for episode in range(num_episodes):
         print(f"\n{'='*80}")
         print(f"EPISODE: {episode}")
         print(f"{'='*80}")
         
         # Create log dir
         curr_episode_dir = f"{logdir}/episode_{episode}"
-        if os.path.exists(curr_episode_dir):
-            print(green(f"Reusing existing episode directory: {curr_episode_dir}"))
-        else:
-            print(f"Creating log directory: {curr_episode_dir}")
-            os.makedirs(curr_episode_dir, exist_ok=True)
+        print(f"Creating log directory: {curr_episode_dir}")
+        os.makedirs(curr_episode_dir, exist_ok=True)
         
         training_succeeded = False
         for trial_idx in range(10):
