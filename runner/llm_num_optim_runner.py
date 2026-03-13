@@ -3,6 +3,7 @@ from world.discrete_state_general_world import DiscreteStateGeneralWorld
 from agent.llm_num_optim_linear_policy_rndm_proj import LLMNumOptimRndmPrjAgent
 from agent.llm_num_optim_linear_policy import LLMNumOptimAgent
 from agent.llm_num_optim_q_table import LLMNumOptimQTableAgent
+from utils.plotting import update_training_plot
 from utils.console import red, green
 from jinja2 import Environment, FileSystemLoader
 import os
@@ -150,6 +151,7 @@ def run_training_loop(
                     f"{episode}, {cpu_time}, {api_time}, {total_episodes}, {total_steps}, {total_reward}, {formatted_parameters}\n"
                 )
                 overall_log_file.flush()
+                update_training_plot(logdir)
                 print(green(f"{trial_idx + 1}th trial attempt succeeded in training"))
                 training_succeeded = True
                 break
