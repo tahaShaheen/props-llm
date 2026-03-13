@@ -41,17 +41,18 @@ Removed explanation requirement in the j2 files. Changed the `num_optim_semantic
 - Added support for local Ollama models
 - Usage: Set `llm_model_name: ollama:model_name` in your YAML config (e.g., `ollama:deepseek-r1:8b`)
 - No additional code changes needed
+- Important: the same YAML field is also used for local OpenAI-compatible servers such as vLLM when `main.py` is launched with `--port`. In that case, `OPENAI_BASE_URL` is set automatically and `gpt-oss` models are routed through the OpenAI-compatible client instead of the native Ollama API.
 
 ### Configurable Ollama Context Window
 - Added `ollama_num_ctx` parameter (default: 4096) to configure token context limits
 - Set in YAML: `ollama_num_ctx: 50000`
 - Token counting via Ollama's tokenize API
 - Displays token counts on terminal: `[TOKENS] ollama:model: X tokens` to diagnose Context Window Saturation/Forgetting thing-a-majig
+- Note: `ollama_num_ctx` applies only to the native Ollama code path. It does not control context length when the model is served through vLLM/OpenAI-compatible mode.
 
 ### Context Guard System
-- Automatic check before sending prompts to Ollama: `[GUARD] Input prompt: X tokens / Y context limit`
-- Prevents context overflow by throwing error with suggestions
-- Calculates recommended `ollama_num_ctx` based on remaining iterations and tokens per parameter line
+- The guard logic is currently disabled in code.
+- Token counting is still available for diagnostics, but prompts are no longer blocked for exceeding a computed context limit.
 
 ### Parameter Parsing is a bit more Robust
 - Handles multiple outputs:
@@ -152,3 +153,94 @@ bias: true
 optimum: 500
 search_step_size: 1.0
 ```
+
+### Runs on Sol (Apptainer + vLLM)
+Experiments can now be launched on Sol by starting a vLLM OpenAI-compatible server inside Apptainer and then pointing `main.py` to that local port.
+
+**Current launch pattern (`run_sol.sh`):**
+```bash
+apptainer run --nv --bind /data:/data /home/$USER/vllm-latest.sif \
+  --model "$MODEL_PATH" \
+  --served-model-name "gpt-oss:120b" \
+  --tensor-parallel-size 2 \
+  --port $PORT &
+
+python main.py \
+  --config <your_config.yaml> \
+  --repetition_id <job_or_array_id> \
+  --port "$PORT"
+```
+
+The current `run_sol.sh` checked into the repo still points to `configs/cartpole/cartpole_propsp.yaml`; change the `--config` argument there to run a different experiment on Sol.
+
+**What matters here:**
+- `--model "$MODEL_PATH"` selects the actual checkpoint/weights loaded by vLLM.
+- `--served-model-name "gpt-oss:120b"` is the API-visible model name that the training code must request.
+- `--port "$PORT"` causes `main.py` to set `OPENAI_BASE_URL=http://127.0.0.1:$PORT/v1`, which switches `gpt-oss` requests to the OpenAI-compatible client.
+
+### Model Name Precedence: YAML vs vLLM Server
+When using Sol/vLLM, the YAML and the server launch script have different jobs:
+
+- YAML `llm_model_name` decides what model name the Python client asks for.
+- vLLM `--served-model-name` decides which API name the server exposes.
+- vLLM `--model` decides which checkpoint is actually loaded.
+
+For example, with:
+```yaml
+llm_model_name: ollama:gpt-oss:120b
+```
+and:
+```bash
+--served-model-name "gpt-oss:120b"
+--model "$MODEL_PATH"
+```
+the `ollama:` prefix is stripped internally, the client requests `gpt-oss:120b`, and the real model used is the checkpoint at `MODEL_PATH`.
+
+**In practice:**
+- If `main.py` is launched with `--port`, the vLLM/OpenAI-compatible server takes precedence for `gpt-oss` models.
+- If `--port` is not provided and `OPENAI_BASE_URL` is not set, then `llm_model_name: ollama:...` uses the native Ollama backend instead.
+
+### Optimizer Template Selection
+Optimizer Jinja files are not auto-selected from the task name. The runner loads exactly what is written in the YAML:
+
+- `llm_si_template_name`
+- `llm_output_conversion_template_name`
+
+These usually point to the same file for compatibility. The main prompt is the important one; the output-conversion template is largely legacy in the current numeric optimization paths.
+
+**Current template families:**
+- `num_optim.j2`: continuous numeric optimization (`cont_space_llm_num_optim`)
+- `num_optim_semantic.j2`: continuous optimization with environment semantics (`cont_state_llm_num_optim_semantics`)
+- `num_optim_candidates.j2`: discrete-state candidate policies (`dist_state_llm_num_optim`)
+- `num_optim_candidates_semantics.j2`: discrete-state candidate policies with semantics (`dist_state_llm_num_optim_semantics`)
+- `*_feedback.j2`: human/semantic feedback variants (`propspf` configs)
+
+The file `configs/optim_template_map.md` is documentation only. It was generated to show which YAML currently points to which optimizer template; it is not read by the training code.
+
+### Original Prompt Variants
+The original optimizer prompts can now be used without rewriting the current YAML structure.
+
+**Available original templates:**
+- `num_optim_original.j2`
+- `num_optim_semantic_original.j2`
+- `num_optim_candidates_original.j2`
+- `num_optim_candidates_semantics_original.j2`
+
+**Two ways to use them:**
+
+1. Point the YAML directly at the original files:
+```yaml
+llm_si_template_name: num_optim_original.j2
+llm_output_conversion_template_name: num_optim_original.j2
+```
+
+2. Or keep the current template names and use the variant switch:
+```yaml
+optim_template_variant: original
+```
+
+With `optim_template_variant: original`, `main.py` automatically rewrites template names such as `num_optim.j2` to `num_optim_original.j2` if that file exists.
+
+**Important:**
+- This affects only optimizer prompt templates, not environment-description templates.
+- If a requested `_original` file does not exist, the code falls back to the current template and prints a warning.
