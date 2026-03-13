@@ -389,12 +389,9 @@ def run_training_loop(
 
     overall_log_path = f"{logdir}/overall_log.csv"
     feedback_log_path = f"{logdir}/feedback_log.csv"
-    if not warmup_dir:
-        warmup_dir = f"{logdir}/warmup"
-        os.makedirs(warmup_dir, exist_ok=True)
-        agent.random_warmup(world, warmup_dir, warmup_episodes)
-    else:
-        agent.replay_buffer.load(warmup_dir)
+    warmup_dir = f"{logdir}/warmup"
+    os.makedirs(warmup_dir, exist_ok=True)
+    agent.random_warmup(world, warmup_dir, warmup_episodes)
 
     overall_fieldnames = [
         "Iteration",
