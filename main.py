@@ -13,6 +13,33 @@ from runner import llm_num_optim_semantics_feedback_runner
 from envs import nim, pong
 
 
+def apply_template_variant(config):
+    variant = config.get("optim_template_variant")
+    if not variant:
+        return
+
+    template_dir = config.get("template_dir")
+    if not template_dir:
+        return
+
+    keys = ["llm_si_template_name", "llm_output_conversion_template_name"]
+    for key in keys:
+        template_name = config.get(key)
+        if not template_name:
+            continue
+
+        base_name, ext = os.path.splitext(template_name)
+        candidate_name = f"{base_name}_{variant}{ext}" if ext else f"{template_name}_{variant}"
+        candidate_path = os.path.join(template_dir, candidate_name)
+
+        if os.path.exists(candidate_path):
+            config[key] = candidate_name
+        else:
+            print(
+                f"[WARNING] Requested template variant '{variant}' for {key}, but '{candidate_name}' was not found in '{template_dir}'. Using '{template_name}'."
+            )
+
+
 def resolve_repetition_id(cli_repetition_id=None, cli_run_id=None):
     if cli_repetition_id:
         return str(cli_repetition_id)
@@ -84,6 +111,8 @@ def main():
 
     if base_logdir:
         run_config["logdir"] = os.path.join(base_logdir, f"repetition_{repetition_id}")
+
+    apply_template_variant(run_config)
 
     if run_config["task"] in ["cont_space_llm_num_optim", "cont_space_llm_num_optim_rndm_proj", "dist_state_llm_num_optim"]:
         llm_num_optim_runner.run_training_loop(**run_config)
