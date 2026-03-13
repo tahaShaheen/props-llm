@@ -19,8 +19,14 @@ def resolve_repetition_id(cli_repetition_id=None, cli_run_id=None):
     if cli_run_id:
         return str(cli_run_id)
 
+    slurm_array_job_id = os.getenv("SLURM_ARRAY_JOB_ID")
+    slurm_array_task_id = os.getenv("SLURM_ARRAY_TASK_ID")
+    if slurm_array_job_id and slurm_array_task_id:
+        return f"{slurm_array_job_id}_{slurm_array_task_id}"
+
     env_candidates = [
-        os.getenv("SLURM_ARRAY_TASK_ID"),
+        slurm_array_task_id,
+        slurm_array_job_id,
         os.getenv("SLURM_JOB_ID"),
         os.getenv("JOB_ID"),
         os.getenv("PBS_JOBID"),
