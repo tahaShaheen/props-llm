@@ -52,6 +52,13 @@ def main():
         default=None,
         help="Deprecated alias for --repetition_id",
     )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port for local OpenAI-compatible server (e.g., vLLM)",
+    )
+    
     args = parser.parse_args()
 
     with open(args.config, "r") as f:
@@ -63,6 +70,12 @@ def main():
     repetition_id = resolve_repetition_id(args.repetition_id, args.run_id)
 
     run_config = dict(config)
+
+    # Route OpenAI-compatible local servers (like vLLM) via env var.
+    # Existing agent code reads OPENAI_BASE_URL to switch from Ollama mode.
+    if args.port:
+        os.environ["OPENAI_BASE_URL"] = f"http://127.0.0.1:{args.port}/v1"
+
     if base_logdir:
         run_config["logdir"] = os.path.join(base_logdir, f"repetition_{repetition_id}")
 
