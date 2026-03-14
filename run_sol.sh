@@ -2,8 +2,8 @@
 #SBATCH --job-name=vllm_array
 #SBATCH --partition=public
 #SBATCH --qos=public
-#SBATCH --array=1-10%3
-#SBATCH --time=0-00:25
+#SBATCH --array=1-50%20
+#SBATCH --time=0-03:00
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
@@ -126,6 +126,6 @@ cd /home/$USER/taha/props-llm
 
 echo "Launching main.py..."
 python main.py \
-    --config configs/cartpole/cartpole_propsp.yaml \
+    --config configs/walker2d/walker2d_propsp.yaml \
     --repetition_id "${REPETITION_ID:-$SLURM_ARRAY_TASK_ID}" \
     --port "$PORT"
