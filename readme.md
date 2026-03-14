@@ -34,6 +34,39 @@ In order to run an experiment, please run `python main.py --config <configuratio
 
 ## Recent Changes (February 2026 - Taha)
 
+### Job Array Logging Layout and Reproducibility Manifests
+- Log families remain the same (`props`, `propsp`, `propspf` style folders under `logs/...`).
+- Runs are now nested by SLURM/manual job and repetition:
+  - `logs/<family>/job_<job_id>/`
+  - `logs/<family>/job_<job_id>/repetition_<job_id>_<task_or_rep>/`
+- Each `job_<job_id>` now includes:
+  - `JOB_MANIFEST.md` (human-readable run/settings summary)
+  - `config_source.yaml` (snapshot of the source config)
+  - `vllm_server_effective.yaml` (vLLM server settings at runtime: model path, served name, parallelism, port, sampling knobs)
+  - `exact_command.txt` (exact Python command used for this repetition process)
+  - `run_sol_used.sh` (snapshot copy of `run_sol.sh` content seen at launch time, when available)
+  - `repetition_master.csv` (job-level timeline for all repetitions: start/end/status/duration)
+- Each repetition folder includes:
+  - `run_context.yaml` (lightweight pointer to the job manifest + repetition identity)
+  - `repetition_timing.yaml` (start/end/status for that repetition)
+  - all per-repetition outputs (`overall_log.csv`, `episode_*`, warmup, traces, plots)
+- Each family folder now has:
+  - `latest` symlink to the newest `job_<job_id>` when supported
+  - `latest_job.txt` pointer fallback
+
+The manifest records run identity, execution command, SLURM launch script snapshot (`run_sol.sh`), selected environment variables, hardware info, dependency versions (including `pip freeze`), prompting/eval settings, config override sources, runner defaults automatically injected, vLLM/LLM knobs with source attribution, and live vLLM endpoint probes (`/v1/models`, `/health`, `/metrics`) when available.
+
+To print rerun commands for a saved job:
+```bash
+python utils/print_rerun_command.py --job-dir logs/<family>/job_<job_id>
+```
+
+To quickly inspect the exact executed command and repetition timeline:
+```bash
+cat logs/<family>/job_<job_id>/exact_command.txt
+cat logs/<family>/job_<job_id>/repetition_master.csv
+```
+
 ### Parameter Parsing is a bit more Robust
 Removed explanation requirement in the j2 files. Changed the `num_optim_semantic` file to not ask for an explanation at the end. I'm using reasoning models and using the reasoning traces as explanations. I increased focus on the actual output format. 
 
