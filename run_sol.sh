@@ -12,6 +12,8 @@
 #SBATCH -o /dev/null
 #SBATCH -e /dev/null
 #SBATCH --exclude=sg025
+#SBATCH --mail-type=BEGIN,END,FAIL,REQUEUE,TIME_LIMIT,ARRAY_TASKS
+#SBATCH --mail-user=tashahee@asu.edu
 
 set -euo pipefail
 
